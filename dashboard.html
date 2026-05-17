@@ -1,0 +1,2112 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ISTANA Laundry — LaundryOS</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] },
+      colors: {
+        brand: { 50:'#FFF7ED',100:'#FFEDD5',200:'#FED7AA',300:'#FDBA74',400:'#FB923C',500:'#F97316',600:'#EA580C',700:'#C2410C',800:'#9A3412',900:'#7C2D12' },
+        surface: { 50:'#FAFAFA',100:'#F5F5F5',200:'#E5E5E5',300:'#D4D4D4',400:'#A3A3A3',500:'#737373',600:'#525252',700:'#404040',800:'#262626',900:'#171717',950:'#0A0A0A' }
+      }
+    }
+  }
+}
+</script>
+<style>
+  :root { --brand: #F97316; --brand-dark: #EA580C; --surface-dark: #0A0A0A; --surface-card: #171717; }
+  * { scrollbar-width: thin; scrollbar-color: #404040 transparent; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-thumb { background: #404040; border-radius: 3px; }
+  body { font-family: 'Plus Jakarta Sans', sans-serif; background: #F5F5F5; }
+  .sidebar-item { transition: all 0.2s ease; position: relative; }
+  .sidebar-item::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--brand); border-radius:0 3px 3px 0; transform:scaleY(0); transition:transform 0.2s ease; }
+  .sidebar-item:hover::before, .sidebar-item.active::before { transform:scaleY(1); }
+  .sidebar-item.active { color: #F97316; }
+  .card-hover { transition: all 0.25s ease; }
+  .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.08); }
+  .stat-card { position: relative; overflow: hidden; }
+  .stat-card::after { content:''; position:absolute; top:-20px; right:-20px; width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,0.08); }
+  .pin-dot { width:16px; height:16px; border-radius:50%; border:2px solid #F97316; transition:all 0.15s ease; }
+  .pin-dot.filled { background:#F97316; transform:scale(1.15); }
+  .kanban-card { animation: slideUp 0.3s ease; }
+  @keyframes slideUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse-ring { 0% { transform:scale(0.9); opacity:1; } 100% { transform:scale(1.4); opacity:0; } }
+  .pulse-dot { position:relative; }
+  .pulse-dot::before { content:''; position:absolute; inset:-4px; border-radius:50%; background:rgba(249,115,22,0.3); animation:pulse-ring 1.5s infinite; }
+  .toast-enter { animation: toastIn 0.3s ease; }
+  @keyframes toastIn { from { opacity:0; transform:translateX(100%); } to { opacity:1; transform:translateX(0); } }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  .modal-overlay { animation: fadeInBg 0.2s ease; }
+  @keyframes fadeInBg { from { opacity:0; } to { opacity:0.5; } }
+  input:focus, select:focus, textarea:focus { outline:none; border-color:#F97316 !important; box-shadow:0 0 0 3px rgba(249,115,22,0.15); }
+  .scanner-line { animation: scanLine 2s ease-in-out infinite; }
+  @keyframes scanLine { 0%,100% { top:10%; } 50% { top:85%; } }
+  .gradient-text { background: linear-gradient(135deg, #F97316, #FB923C); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:0.01ms !important; transition-duration:0.01ms !important; } }
+</style>
+</head>
+<body class="bg-surface-100 text-surface-900 antialiased">
+<div id="app"></div>
+<div id="toast-container" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2"></div>
+<div id="modal-container"></div>
+
+<script>
+// ============================================================
+// STATE MANAGEMENT
+// ============================================================
+const S = {
+  loggedIn: false,
+  role: null, // 'cashier','workshop','owner','admin'
+  page: 'dashboard',
+  pin: '',
+  sidebarOpen: true,
+  // Data mock
+  orders: [
+    { id:1, code:'LND-240501-001', customer:'Sari Dewi', phone:'62812345678', status:'ready', service:'regular', weight:5.5, total:38500, payMethod:'qris', payStatus:'paid', items:[{type:'Kiloan',color:'Campuran',notes:'Pewangi Lavender',status:'ready'}], receivedAt:'2024-05-01 08:30', completedAt:null },
+    { id:2, code:'LND-240501-002', customer:'Budi Santoso', phone:'62898765432', status:'ironing', service:'express', weight:3.2, total:32000, payMethod:'cash', payStatus:'paid', items:[{type:'Kemeja',color:'Putih',brand:'Zara',notes:'Jangan press panas',status:'ironing'},{type:'Celana',color:'Hitam',notes:'',status:'drying'}], receivedAt:'2024-05-01 09:15', completedAt:null },
+    { id:3, code:'LND-240501-003', customer:'Andi Wijaya', phone:'62815556677', status:'washing', service:'regular', weight:8.0, total:56000, payMethod:'qris', payStatus:'paid', items:[{type:'Kiloan',color:'Gelap terpisah',notes:'',status:'washing'}], receivedAt:'2024-05-01 10:00', completedAt:null },
+    { id:4, code:'LND-240501-004', customer:'Rina Hartati', phone:'62817778899', status:'drying', service:'regular', weight:2.0, total:16000, payMethod:'cash', payStatus:'paid', items:[{type:'Kiloan',color:'Putih',notes:'Pewangi Rose',status:'drying'}], receivedAt:'2024-05-01 07:45', completedAt:null },
+    { id:5, code:'LND-240501-005', customer:'Dian Permata', phone:'62819990011', status:'received', service:'dry_clean', weight:0, total:75000, payMethod:'wallet', payStatus:'paid', items:[{type:'Jas',color:'Navy',brand:'Hugo Boss',notes:'Dry clean only',status:'received'},{type:'Gaun',color:'Merah Maroon',notes:'Hati-hati payet',status:'received'}], receivedAt:'2024-05-01 11:20', completedAt:null },
+    { id:6, code:'LND-240501-006', customer:'Joko Prasetyo', phone:'62812223334', status:'quality_check', service:'regular', weight:4.5, total:31500, payMethod:'qris', payStatus:'paid', items:[{type:'Kiloan',color:'Campuran',notes:'',status:'quality_check'}], receivedAt:'2024-05-01 06:30', completedAt:null },
+    { id:7, code:'LND-240430-012', customer:'Mega Sari', phone:'62813445566', status:'completed', service:'regular', weight:6.0, total:42000, payMethod:'cash', payStatus:'paid', items:[{type:'Kiloan',color:'Campuran',notes:'',status:'completed'}], receivedAt:'2024-04-30 14:00', completedAt:'2024-05-01 07:00' },
+  ],
+  customers: [
+    { id:1, name:'Sari Dewi', phone:'62812345678', tier:'GOLD', wallet:150000, totalSpent:2500000, lastOrder:'2024-05-01' },
+    { id:2, name:'Budi Santoso', phone:'62898765432', tier:'SILVER', wallet:0, totalSpent:850000, lastOrder:'2024-05-01' },
+    { id:3, name:'Andi Wijaya', phone:'62815556677', tier:'REGULAR', wallet:50000, totalSpent:200000, lastOrder:'2024-05-01' },
+    { id:4, name:'Rina Hartati', phone:'62817778899', tier:'GOLD', wallet:250000, totalSpent:3200000, lastOrder:'2024-05-01' },
+    { id:5, name:'Dian Permata', phone:'62819990011', tier:'SILVER', wallet:0, totalSpent:650000, lastOrder:'2024-05-01' },
+    { id:6, name:'Joko Prasetyo', phone:'62812223334', tier:'REGULAR', wallet:0, totalSpent:150000, lastOrder:'2024-05-01' },
+    { id:7, name:'Mega Sari', phone:'62813445566', tier:'REGULAR', wallet:0, totalSpent:42000, lastOrder:'2024-04-30' },
+    { id:8, name:'Hendra Kusuma', phone:'62815667788', tier:'SILVER', wallet:0, totalSpent:900000, lastOrder:'2024-03-15' },
+    { id:9, name:'Lina Marlina', phone:'62818899001', tier:'REGULAR', wallet:0, totalSpent:180000, lastOrder:'2024-02-28' },
+    { id:10, name:'Agus Riyanto', phone:'62810011223', tier:'REGULAR', wallet:0, totalSpent:95000, lastOrder:'2024-03-01' },
+  ],
+  materials: [
+    { id:1, name:'Deterjen Cair', unit:'liter', stock:2.5, minStock:5, costPerUnit:25000, avgUsage:1.2 },
+    { id:2, name:'Pewangi Lavender', unit:'liter', stock:0.8, minStock:2, costPerUnit:35000, avgUsage:0.3 },
+    { id:3, name:'Pewangi Rose', unit:'liter', stock:1.5, minStock:2, costPerUnit:35000, avgUsage:0.2 },
+    { id:4, name:'Plastik Packing', unit:'pcs', stock:150, minStock:100, costPerUnit:200, avgUsage:30 },
+    { id:5, name:'Sabun Cuci Tangan', unit:'pcs', stock:8, minStock:5, costPerUnit:12000, avgUsage:0.5 },
+    { id:6, name:'Tissue Meja', unit:'pcs', stock:3, minStock:5, costPerUnit:8000, avgUsage:0.3 },
+  ],
+  pricingTiers: [
+    { id:1, service:'regular', minWeight:0, maxWeight:3, pricePerKg:8000 },
+    { id:2, service:'regular', minWeight:3.01, maxWeight:10, pricePerKg:7000 },
+    { id:3, service:'regular', minWeight:10.01, maxWeight:999, pricePerKg:6500 },
+    { id:4, service:'express', minWeight:0, maxWeight:3, pricePerKg:12000 },
+    { id:5, service:'express', minWeight:3.01, maxWeight:10, pricePerKg:10000 },
+    { id:6, service:'express', minWeight:10.01, maxWeight:999, pricePerKg:9000 },
+  ],
+  itemPricing: [
+    { id:1, type:'Kemeja', price:15000 }, { id:2, type:'Celana', price:12000 },
+    { id:3, type:'Jas', price:45000 }, { id:4, type:'Gaun', price:35000 },
+    { id:5, type:'Sepatu', price:25000 }, { id:6, type:'Bed Cover', price:35000 },
+    { id:7, type:'Jaket', price:20000 }, { id:8, type:'Tas', price:30000 },
+  ],
+  complaints: [
+    { id:1, orderCode:'LND-240425-003', customer:'Hendra Kusuma', category:'damaged', status:'investigating', desc:'Kemeja putih ada noda warna merah setelah cuci', date:'2024-04-28' },
+    { id:2, orderCode:'LND-240415-007', customer:'Lina Marlina', category:'missing', status:'resolved', desc:'1 celana jeans hilang dari paket 5kg', date:'2024-04-18', compensation:{type:'wallet_cashback',value:75000} },
+  ],
+  membershipTiers: [
+    { code:'REGULAR', minSpent:0, discount:0, color:'surface-400' },
+    { code:'SILVER', minSpent:500000, discount:5, color:'surface-300' },
+    { code:'GOLD', minSpent:2000000, discount:10, color:'brand-500' },
+  ],
+  packages: [
+    { id:1, name:'Paket Hemat 10 Kg', type:'wash_kg', quota:{wash_kg:10}, price:60000, validityDays:90, sold:45 },
+    { id:2, name:'Paket Sepatu 5x', type:'wash_piece', quota:{shoes:5}, price:100000, validityDays:60, sold:22 },
+    { id:3, name:'Paket Premium 20 Kg', type:'wash_kg', quota:{wash_kg:20}, price:110000, validityDays:120, sold:18 },
+  ],
+  shifts: [
+    { id:1, cashier:'Sari (Kasir 1)', start:'2024-05-01 07:00', end:null, cashExpected:0, cashActual:0, qrisGross:245000, qrisMDR:3675, qrisNet:241325, status:'open' },
+  ],
+  waMode: 'wa_me', // 'fonnte' or 'wa_me'
+  roundingMode: 'none', // none | down_100 | up_100 | nearest_500
+  ppnMode: 'nonaktif', // nonaktif | include | exclude
+  ppnRate: 11,
+  scanCooldown: false,
+  scanIdempotency: {},
+  offlineQueue: [],
+  addOnTarget: null,
+  scanResult: null,
+  newOrder: { mode:'kiloan', customer:null, service:'regular', weight:'', items:[], notes:'', payMethod:'cash' },
+};
+
+// ============================================================
+// UTILITAS
+// ============================================================
+const $ = id => document.getElementById(id);
+const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID');
+const statusLabel = s => ({ received:'Diterima', washing:'Mencuci', drying:'Mengeringkan', ironing:'Menyetrika', quality_check:'QC', packing:'Packing', ready:'Siap Ambil', delivering:'Pengiriman', completed:'Selesai', cancelled:'Dibatalkan' }[s]||s);
+const statusColor = s => ({ received:'bg-blue-100 text-blue-700', washing:'bg-cyan-100 text-cyan-700', drying:'bg-yellow-100 text-yellow-700', ironing:'bg-orange-100 text-orange-700', quality_check:'bg-purple-100 text-purple-700', packing:'bg-indigo-100 text-indigo-700', ready:'bg-green-100 text-green-700', delivering:'bg-teal-100 text-teal-700', completed:'bg-surface-100 text-surface-500', cancelled:'bg-red-100 text-red-700' }[s]||'bg-surface-100');
+const nextStatus = s => ({ received:'washing', washing:'drying', drying:'ironing', ironing:'quality_check', quality_check:'packing', packing:'ready', ready:'completed' }[s]);
+const nextStatusLabel = s => { const n=nextStatus(s); return n ? 'Pindah ke '+statusLabel(n) : 'Selesai'; };
+const tierBadge = t => { const colors = { REGULAR:'bg-surface-200 text-surface-600', SILVER:'bg-surface-400 text-white', GOLD:'bg-brand-500 text-white' }; return `<span class="px-2 py-0.5 rounded-full text-xs font-semibold ${colors[t]||colors.REGULAR}">${t}</span>`; };
+
+function toast(msg, type='success') {
+  const c = $('toast-container');
+  const colors = { success:'bg-green-600', error:'bg-red-600', warning:'bg-amber-600', info:'bg-blue-600' };
+  const icons = { success:'fa-check-circle', error:'fa-times-circle', warning:'fa-exclamation-triangle', info:'fa-info-circle' };
+  const el = document.createElement('div');
+  el.className = `toast-enter ${colors[type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 min-w-[300px]`;
+  el.innerHTML = `<i class="fas ${icons[type]}"></i><span class="text-sm font-medium">${msg}</span>`;
+  c.appendChild(el);
+  setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity 0.3s'; setTimeout(()=>el.remove(),300); }, 3000);
+}
+
+function showModal(title, body, actions='') {
+  $('modal-container').innerHTML = `
+    <div class="modal-overlay fixed inset-0 bg-black/50 z-[9998] flex items-center justify-center p-4" onclick="if(event.target===this)closeModal()">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto fade-in">
+        <div class="flex items-center justify-between p-5 border-b border-surface-200">
+          <h3 class="text-lg font-bold text-surface-900">${title}</h3>
+          <button onclick="closeModal()" class="w-8 h-8 rounded-full hover:bg-surface-100 flex items-center justify-center text-surface-400"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-5">${body}</div>
+        ${actions ? `<div class="flex justify-end gap-3 p-5 border-t border-surface-200">${actions}</div>` : ''}
+      </div>
+    </div>`;
+}
+function closeModal() { $('modal-container').innerHTML = ''; }
+
+function calcPrice(service, weightKg) {
+  if (!weightKg || weightKg <= 0) return 0;
+  const tier = S.pricingTiers.find(t => t.service === service && weightKg >= t.minWeight && weightKg <= t.maxWeight);
+  return tier ? Math.round(tier.pricePerKg * weightKg) : 0;
+}
+
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r=Math.random()*16|0, v=c==='x'?r:(r&0x3|0x8); return v.toString(16); });
+}
+
+function validatePhone(p) {
+  return /^62[0-9]{8,15}$/.test(p);
+}
+
+function formatPhone(val) {
+  let d = val.replace(/[^0-9]/g, '');
+  if (d.startsWith('0')) d = '62' + d.slice(1);
+  if (d.startsWith('8')) d = '62' + d;
+  if (!d.startsWith('62')) d = '62' + d;
+  return d;
+}
+
+function applyRounding(amount, mode) {
+  if (mode === 'none') return amount;
+  if (mode === 'down_100') return Math.floor(amount / 100) * 100;
+  if (mode === 'up_100') return Math.ceil(amount / 100) * 100;
+  if (mode === 'nearest_500') return Math.round(amount / 500) * 500;
+  return amount;
+}
+
+function calcPpn(amount, mode, rate) {
+  const r = rate || S.ppnRate;
+  if (mode === 'nonaktif') return { ppnAmount: 0, totalBeforePpn: amount, totalAfterPpn: amount, ppnRate: 0 };
+  if (mode === 'include') {
+    const ppn = Math.round(amount - (amount * 100 / (100 + r)));
+    return { ppnAmount: ppn, totalBeforePpn: amount - ppn, totalAfterPpn: amount, ppnRate: r };
+  }
+  if (mode === 'exclude') {
+    const ppn = Math.round(amount * r / 100);
+    return { ppnAmount: ppn, totalBeforePpn: amount, totalAfterPpn: amount + ppn, ppnRate: r };
+  }
+  return { ppnAmount: 0, totalBeforePpn: amount, totalAfterPpn: amount, ppnRate: 0 };
+}
+
+function calcTotalBreakdown(basePrice, discPercent, roundingMode, ppnMode, ppnRate) {
+  const afterDisc = basePrice - Math.round(basePrice * (discPercent||0) / 100);
+  const ppn = calcPpn(afterDisc, ppnMode||S.ppnMode, ppnRate||S.ppnRate);
+  const rounded = applyRounding(ppn.totalAfterPpn, roundingMode||S.roundingMode);
+  return { basePrice, afterDisc, ppnAmount: ppn.ppnAmount, ppnRate: ppn.ppnRate, totalBeforeRounding: ppn.totalAfterPpn, roundingDiff: rounded - ppn.totalAfterPpn, total: rounded };
+}
+
+function getKanbanOrders() {
+  const cols = ['received','washing','drying','ironing','quality_check','packing','ready'];
+  return cols.map(c => ({ key:c, label:statusLabel(c), orders: S.orders.filter(o=>o.status===c) })).filter(c=>c.orders.length>0);
+}
+
+function getItemLevelStatus(o) {
+  const statuses = o.items.map(i => i.status || o.status);
+  const unique = [...new Set(statuses)];
+  if (unique.length === 1) return unique[0];
+  return 'in_progress';
+}
+
+function itemStatusLabel(s) {
+  if (s === 'in_progress') return 'In Progress';
+  return statusLabel(s);
+}
+
+function orderHeaderStatus(o) {
+  const itemStatuses = o.items.map(i => i.status || o.status);
+  const unique = [...new Set(itemStatuses)];
+  if (unique.length === 1) return unique[0];
+  return 'in_progress';
+}
+
+function printEscPos(order) {
+  const lines = [];
+  const center = t => '\x1b\x61\x01' + t;
+  const bold = t => '\x1b\x45\x01' + t + '\x1b\x45\x00';
+  const normal = t => '\x1b\x61\x00' + t;
+  const large = t => '\x1b\x21\x30' + t + '\x1b\x21\x00';
+
+  lines.push('\x1b\x40'); // Init
+  lines.push(center('ISTANA Laundry'));
+  lines.push(center('LaundryOS v1.0'));
+  lines.push(center('=============================='));
+  lines.push(normal(''));
+  lines.push(center(bold('STRUK PENERIMAAN')));
+  lines.push(normal(''));
+  lines.push(normal('Kode: ' + order.code));
+  lines.push(normal('Pelanggan: ' + order.customer));
+  lines.push(normal('Tgl: ' + order.receivedAt));
+  lines.push(normal('Layanan: ' + ({regular:'Reguler',express:'Express',dry_clean:'Dry Clean'}[order.service]||order.service)));
+  if (order.weight) lines.push(normal('Berat: ' + order.weight + ' kg'));
+  lines.push(normal('Total: Rp ' + Number(order.total).toLocaleString('id-ID')));
+  lines.push(normal('Bayar: ' + ({cash:'Tunai',qris:'QRIS',wallet:'Saldo'}[order.payMethod]||order.payMethod)));
+  lines.push(normal(''));
+  const trackingUrl = 'https://track.laundryos.com/' + order.code;
+  const waUrl = 'https://wa.me/' + order.phone + '?text=Halo%2C%20pesanan%20' + order.code;
+  lines.push(center('QR Code Tracking & WA'));
+  lines.push('\x1d\x6b\x04' + String.fromCharCode(trackingUrl.length+3) + '\x00' + trackingUrl); // QR Code command
+  lines.push(normal(''));
+  lines.push(center('Scan untuk cek progress'));
+  lines.push(center(waUrl));
+  lines.push(normal(''));
+  lines.push(center('Terima kasih!'));
+  lines.push('\x1d\x56\x00'); // Cut paper
+
+  const escText = lines.join('\n');
+  try {
+    // Coba kirim ke printer thermal via POST ke local server (port 8001 untuk ESC/POS)
+    fetch('http://127.0.0.1:8001/print', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:btoa(escText)}), mode:'no-cors' }).catch(()=>{});
+  } catch(e) {}
+  toast('Label & struk dikirim ke printer thermal', 'success');
+}
+
+function syncOfflineQueue() {
+  if (S.offlineQueue.length === 0) return;
+  const pending = [...S.offlineQueue];
+  const success = [];
+  for (const scan of pending) {
+    const o = S.orders.find(x => x.code === scan.code);
+    if (o) {
+      o.status = scan.targetStatus;
+      success.push(scan);
+    }
+  }
+  S.offlineQueue = S.offlineQueue.filter(s => !success.includes(s));
+  if (success.length > 0) toast(success.length + ' scan offline berhasil disinkronkan', 'success');
+}
+
+// ============================================================
+// NAVIGASI
+// ============================================================
+const NAV = {
+  cashier: [
+    { id:'dashboard', icon:'fa-th-large', label:'Dashboard' },
+    { id:'new-order', icon:'fa-plus-circle', label:'Order Baru' },
+    { id:'orders', icon:'fa-list', label:'Daftar Order' },
+    { id:'shift', icon:'fa-cash-register', label:'Shift Kasir' },
+  ],
+  workshop: [
+    { id:'scanner', icon:'fa-barcode', label:'Scanner' },
+  ],
+  owner: [
+    { id:'dashboard', icon:'fa-chart-line', label:'Ringkasan' },
+    { id:'live', icon:'fa-broadcast-tower', label:'Live Monitor' },
+    { id:'finance', icon:'fa-wallet', label:'Keuangan' },
+    { id:'inventory', icon:'fa-boxes', label:'Inventori' },
+    { id:'crm', icon:'fa-users', label:'CRM Pelanggan' },
+  ],
+  admin: [
+    { id:'dashboard', icon:'fa-cog', label:'Overview' },
+    { id:'settings', icon:'fa-sliders-h', label:'Pengaturan' },
+    { id:'pricing', icon:'fa-tags', label:'Harga Dinamis' },
+    { id:'inv-master', icon:'fa-flask', label:'Master Inventori' },
+    { id:'complaints', icon:'fa-exclamation-circle', label:'Komplain' },
+    { id:'memberships', icon:'fa-crown', label:'Membership' },
+    { id:'packages', icon:'fa-gift', label:'Paket Prepaid' },
+    { id:'routing', icon:'fa-route', label:'Routing Outlet' },
+  ],
+};
+
+function nav(page) { S.page = page; S.scanResult = null; render(); }
+
+// ============================================================
+// RENDER UTAMA
+// ============================================================
+function render() {
+  const app = $('app');
+  if (!S.loggedIn) { app.innerHTML = renderLogin(); bindLogin(); return; }
+  const isWorkshop = S.role === 'workshop';
+  app.innerHTML = isWorkshop ? renderWorkshopLayout() : renderMainLayout();
+  bindPage();
+}
+
+// ============================================================
+// HALAMAN LOGIN
+// ============================================================
+function renderLogin() {
+  return `
+  <div class="min-h-screen bg-yellow-50 flex items-center justify-center p-4 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-[0.07]" style="background:radial-gradient(ellipse at 30% 50%, #F97316 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, #FB923C 0%, transparent 50%);"></div>
+    <div class="relative z-10 w-full max-w-sm">
+      <div class="text-center mb-8">
+        <img src="https://z-cdn-media.chatglm.cn/files/4ecb000b-de22-46b7-849a-564194b5b2f3.png?auth_key=1879018142-a3731bcb3c26482fbd66abab61ce6610-0-16fb9a0d7b205d69b8eb6151d9920a37" alt="ISTANA Laundry" class="w-28 h-28 mx-auto mb-4 rounded-full" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="w-28 h-28 mx-auto mb-4 rounded-full bg-brand-600 items-center justify-center text-white text-xl font-bold hidden">IL</div>
+        <h1 class="text-2xl font-bold text-surface-900">ISTANA Laundry</h1>
+        <p class="text-surface-500 text-sm mt-1">LaundryOS v1.0</p>
+      </div>
+      <div class="bg-white rounded-2xl p-6 border border-yellow-200 shadow-lg shadow-yellow-200/30">
+        <p class="text-surface-700 text-sm text-center mb-6">Masukkan PIN untuk melanjutkan</p>
+        <div class="flex justify-center gap-4 mb-6" id="pin-dots">
+          ${[0,1,2,3].map(()=>'<div class="pin-dot"></div>').join('')}
+        </div>
+        <div class="grid grid-cols-3 gap-3" id="pin-pad">
+          ${[1,2,3,4,5,6,7,8,9,'',0,'del'].map(n=>{
+            if(n==='') return '<div></div>';
+            if(n==='del') return `<button class="pin-key h-14 rounded-xl bg-yellow-100 hover:bg-yellow-200 text-yellow-800 text-lg font-semibold transition-colors" data-pin="del"><i class="fas fa-backspace"></i></button>`;
+            return `<button class="pin-key h-14 rounded-xl bg-yellow-100 hover:bg-brand-500 hover:text-white text-yellow-800 text-xl font-bold transition-colors" data-pin="${n}">${n}</button>`;
+          }).join('')}
+        </div>
+        <div class="mt-6">
+          <p class="text-surface-500 text-xs text-center mb-3">Login sebagai:</p>
+          <div class="grid grid-cols-2 gap-2" id="role-select">
+            ${['cashier','workshop','owner','admin'].map(r=>`
+              <button class="role-btn px-3 py-2 rounded-lg text-xs font-semibold border transition-all ${r==='cashier'?'border-brand-500 bg-brand-500/10 text-brand-600':'border-yellow-300 text-surface-600 hover:border-brand-400 hover:text-brand-600'}" data-role="${r}">
+                ${{cashier:'<i class="fas fa-cash-register mr-1"></i>Kasir',workshop:'<i class="fas fa-tshirt mr-1"></i>Workshop',owner:'<i class="fas fa-user-tie mr-1"></i>Pemilik',admin:'<i class="fas fa-shield-alt mr-1"></i>Admin'}[r]}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      <p class="text-surface-400 text-xs text-center mt-6">Demo PIN: 1234</p>
+    </div>
+  </div>`;
+}
+
+function bindLogin() {
+  let pin = '';
+  document.querySelectorAll('.pin-key').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.pin;
+      if (v === 'del') { pin = pin.slice(0,-1); }
+      else if (pin.length < 4) { pin += v; }
+      document.querySelectorAll('.pin-dot').forEach((d,i) => d.classList.toggle('filled', i < pin.length));
+      if (pin.length === 4) {
+        if (pin === '1234') {
+          S.loggedIn = true;
+          S.role = document.querySelector('.role-btn.border-brand-500')?.dataset.role || 'cashier';
+          S.page = S.role === 'workshop' ? 'scanner' : 'dashboard';
+          toast('Selamat datang di LaundryOS!','success');
+          render();
+        } else {
+          toast('PIN salah! Coba lagi.','error');
+          pin = '';
+          document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled'));
+        }
+      }
+    });
+  });
+  document.querySelectorAll('.role-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.role-btn').forEach(b => { b.className = 'role-btn px-3 py-2 rounded-lg text-xs font-semibold border transition-all border-surface-700 text-surface-400 hover:border-surface-500'; });
+      btn.className = 'role-btn px-3 py-2 rounded-lg text-xs font-semibold border transition-all border-brand-500 bg-brand-500/10 text-brand-400';
+    });
+  });
+}
+
+// ============================================================
+// LAYOUT UTAMA (Sidebar + Content)
+// ============================================================
+function renderMainLayout() {
+  const items = NAV[S.role] || [];
+  return `
+  <div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <aside class="w-56 bg-white text-surface-700 flex flex-col shrink-0 transition-all duration-300 border-r border-surface-200 ${S.sidebarOpen?'':'w-16'} overflow-hidden" id="sidebar">
+      <div class="p-4 flex items-center gap-3 border-b border-surface-200">
+        <img src="https://z-cdn-media.chatglm.cn/files/4ecb000b-de22-46b7-849a-564194b5b2f3.png?auth_key=1879018142-a3731bcb3c26482fbd66abab61ce6610-0-16fb9a0d7b205d69b8eb6151d9920a37" class="w-9 h-9 rounded-full shrink-0" onerror="this.outerHTML='<div class=\\'w-9 h-9 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold shrink-0\\'>IL</div>'">
+        ${S.sidebarOpen?'<div class="min-w-0"><p class="text-surface-900 font-bold text-sm truncate">ISTANA Laundry</p><p class="text-surface-400 text-xs truncate">LaundryOS</p></div>':''}
+      </div>
+      <nav class="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
+        ${items.map(i=>`
+          <button class="sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${S.page===i.id?'active text-brand-600 bg-brand-50':'text-surface-500 hover:text-surface-800 hover:bg-surface-50'}" onclick="nav('${i.id}')">
+            <i class="fas ${i.icon} w-5 text-center shrink-0"></i>
+            ${S.sidebarOpen?`<span class="truncate">${i.label}</span>`:''}
+          </button>
+        `).join('')}
+      </nav>
+      <div class="p-3 border-t border-surface-200">
+        <button class="sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-surface-500 hover:text-red-600 hover:bg-red-50" onclick="S.loggedIn=false;S.pin='';S.page='dashboard';render()">
+          <i class="fas fa-sign-out-alt w-5 text-center"></i>
+          ${S.sidebarOpen?'<span>Keluar</span>':''}
+        </button>
+      </div>
+    </aside>
+    <!-- Main -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <header class="h-14 bg-white border-b border-surface-200 flex items-center justify-between px-4 shrink-0">
+        <div class="flex items-center gap-3">
+          <button onclick="S.sidebarOpen=!S.sidebarOpen;render()" class="w-8 h-8 rounded-lg hover:bg-surface-100 flex items-center justify-center text-surface-500"><i class="fas fa-bars"></i></button>
+          <h2 class="font-semibold text-surface-800">${(items.find(i=>i.id===S.page)||{}).label||'Dashboard'}</h2>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-xs px-2 py-1 rounded-full bg-brand-100 text-brand-700 font-semibold">${{cashier:'Kasir',workshop:'Workshop',owner:'Pemilik',admin:'Admin'}[S.role]}</span>
+          <div class="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-white text-xs font-bold">${{cashier:'KS',workshop:'WS',owner:'PW',admin:'AD'}[S.role]}</div>
+        </div>
+      </header>
+      <main class="flex-1 overflow-y-auto p-6" id="page-content">
+        ${renderPage()}
+      </main>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// WORKSHOP LAYOUT (Full Screen Scanner)
+// ============================================================
+function renderWorkshopLayout() {
+  return `
+  <div class="h-screen bg-surface-950 flex flex-col relative overflow-hidden">
+    <div class="absolute inset-0 opacity-5" style="background:radial-gradient(ellipse at 50% 30%, #F97316 0%, transparent 70%);"></div>
+    <header class="relative z-10 h-12 flex items-center justify-between px-4 border-b border-surface-800">
+      <div class="flex items-center gap-3">
+        <img src="https://z-cdn-media.chatglm.cn/files/4ecb000b-de22-46b7-849a-564194b5b2f3.png?auth_key=1879018142-a3731bcb3c26482fbd66abab61ce6610-0-16fb9a0d7b205d69b8eb6151d9920a37" class="w-7 h-7 rounded-full" onerror="this.outerHTML='<div class=\\'w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold\\'>IL</div>'">
+        <span class="text-white font-bold text-sm">Scanner Workshop</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-surface-400 text-xs"><i class="fas fa-user mr-1"></i>Budi (Setrika)</span>
+        <button onclick="S.loggedIn=false;S.pin='';render()" class="text-surface-500 hover:text-red-400 text-sm"><i class="fas fa-sign-out-alt"></i></button>
+      </div>
+    </header>
+    <div class="relative z-10 flex-1 flex flex-col items-center justify-center p-4" id="page-content">
+      ${renderPage()}
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// ROUTER HALAMAN
+// ============================================================
+function renderPage() {
+  const pages = {
+    'dashboard': () => S.role==='owner' ? pageOwnerDashboard() : S.role==='admin' ? pageAdminOverview() : pagePOSDashboard(),
+    'new-order': pageNewOrder,
+    'orders': pageOrderList,
+    'shift': pageShiftReconciliation,
+    'scanner': pageScanner,
+    'live': pageLiveMonitor,
+    'finance': pageFinance,
+    'inventory': pageInventory,
+    'crm': pageCRM,
+    'settings': pageSettings,
+    'pricing': pagePricing,
+    'inv-master': pageInvMaster,
+    'complaints': pageComplaints,
+    'memberships': pageMemberships,
+    'packages': pagePackages,
+    'routing': pageRouting,
+  };
+  return (pages[S.page] || pages['dashboard'])();
+}
+
+// ============================================================
+// POS DASHBOARD (Kasir)
+// ============================================================
+function pagePOSDashboard() {
+  const today = S.orders.filter(o => !o.completedAt || o.completedAt?.startsWith('2024-05-01'));
+  const masuk = today.filter(o=>o.status!=='completed').length;
+  const dikerja = today.filter(o=>!['received','ready','completed'].includes(o.status)).length;
+  const siap = today.filter(o=>o.status==='ready');
+  const omset = today.reduce((a,o)=>a+o.total,0);
+  return `
+  <div class="fade-in space-y-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      ${[
+        { label:'Order Masuk', value:masuk, icon:'fa-inbox', color:'blue' },
+        { label:'Sedang Dikerjakan', value:dikerja, icon:'fa-cog fa-spin', color:'orange' },
+        { label:'Siap Diambil', value:siap.length, icon:'fa-check-circle', color:'green' },
+        { label:'Omset Hari Ini', value:fmt(omset), icon:'fa-money-bill-wave', color:'brand' },
+      ].map(c => `
+        <div class="stat-card bg-white rounded-xl p-5 border border-surface-200 card-hover">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-surface-500 text-sm font-medium">${c.label}</span>
+            <div class="w-10 h-10 rounded-lg bg-${c.color}-100 flex items-center justify-center"><i class="fas ${c.icon} text-${c.color}-500"></i></div>
+          </div>
+          <p class="text-2xl font-bold text-surface-900">${c.value}</p>
+        </div>
+      `).join('')}
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 bg-white rounded-xl border border-surface-200">
+        <div class="px-5 py-4 border-b border-surface-200 flex items-center justify-between">
+          <h3 class="font-bold text-surface-800">Siap Diambil</h3>
+          <span class="text-xs text-surface-400">${siap.length} order</span>
+        </div>
+        <div class="divide-y divide-surface-100 max-h-80 overflow-y-auto">
+          ${siap.length===0?'<div class="p-8 text-center text-surface-400 text-sm">Tidak ada order yang siap diambil</div>':
+          siap.map(o=>`
+            <div class="px-5 py-3 flex items-center justify-between hover:bg-surface-50 transition-colors">
+              <div>
+                <p class="font-semibold text-sm text-surface-800">${o.code}</p>
+                <p class="text-xs text-surface-500">${o.customer} &middot; ${o.items.map(i=>i.type).join(', ')}</p>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="text-sm font-bold text-surface-800">${fmt(o.total)}</span>
+                <button onclick="completeOrder(${o.id})" class="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg transition-colors">Ambil</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-surface-200">
+        <div class="px-5 py-4 border-b border-surface-200">
+          <h3 class="font-bold text-surface-800">Aktivitas Terkini</h3>
+        </div>
+        <div class="p-4 space-y-3 max-h-80 overflow-y-auto">
+          ${[
+            { time:'11:20', text:'Order LND-005 diterima', icon:'fa-plus', color:'blue' },
+            { time:'10:45', text:'LND-003 mulai dicuci', icon:'fa-water', color:'cyan' },
+            { time:'10:30', text:'LND-004 selesai dikeringkan', icon:'fa-sun', color:'yellow' },
+            { time:'10:15', text:'LND-002 mulai disetrika', icon:'fa-temperature-high', color:'orange' },
+            { time:'09:30', text:'LND-001 siap diambil', icon:'fa-check', color:'green' },
+          ].map(a=>`
+            <div class="flex gap-3 items-start">
+              <div class="w-8 h-8 rounded-full bg-${a.color}-100 flex items-center justify-center shrink-0 mt-0.5"><i class="fas ${a.icon} text-${a.color}-500 text-xs"></i></div>
+              <div><p class="text-sm text-surface-700">${a.text}</p><p class="text-xs text-surface-400">${a.time}</p></div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function completeOrder(id) {
+  const o = S.orders.find(x=>x.id===id);
+  if (o) { o.status = 'completed'; o.completedAt = '2024-05-01 ' + new Date().toTimeString().slice(0,5); toast(`${o.code} telah diambil oleh pelanggan`); render(); }
+}
+
+// ============================================================
+// ORDER BARU (INTAKE FORM)
+// ============================================================
+function pageNewOrder() {
+  const o = S.newOrder;
+  const price = o.mode==='kiloan' ? calcPrice(o.service, parseFloat(o.weight)||0) : o.items.reduce((a,it)=>a+(S.itemPricing.find(p=>p.type===it.type)?.price||0),0);
+  const disc = o.customer ? (S.membershipTiers.find(t=>t.code===o.customer.tier)?.discount||0) : 0;
+  const afterDisc = price - Math.round(price * disc / 100);
+  return `
+  <div class="fade-in">
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <!-- Form Kiri -->
+      <div class="xl:col-span-2 space-y-4">
+        <!-- Customer -->
+        <div class="bg-white rounded-xl border border-surface-200 p-5">
+          <h3 class="font-bold text-surface-800 mb-4"><i class="fas fa-user mr-2 text-brand-500"></i>Pelanggan</h3>
+          <div class="relative">
+            <input type="text" id="cust-search" placeholder="Ketik nama atau nomor HP..." value="${o.customer?o.customer.name+' — '+o.customer.phone:''}"
+              class="w-full border border-surface-300 rounded-lg px-4 py-2.5 text-sm" oninput="searchCustomer(this.value)" onfocus="searchCustomer(this.value)" autocomplete="off">
+            <div id="cust-dropdown" class="absolute z-50 w-full mt-1 bg-white border border-surface-200 rounded-lg shadow-xl max-h-48 overflow-y-auto hidden"></div>
+          </div>
+          ${!o.customer?`
+            <div class="mt-3">
+              <label class="text-sm text-surface-500 block mb-1">Atau input nomor HP baru (auto-format ke 628xx)</label>
+              <input type="text" id="phone-input" placeholder="08xx atau 628xx..." class="w-full border border-surface-300 rounded-lg px-4 py-2.5 text-sm" oninput="const f=formatPhone(this.value);if(f!==this.value){this.value=f;const r=/^62[0-9]{8,15}$/;if(r.test(f)){searchCustomer(f)}}" autocomplete="off">
+              <p class="text-xs text-surface-400 mt-1">Format: 62xxxxxxxxxx (min 10, maks 13 digit setelah 62)</p>
+            </div>
+          `:''}
+          ${o.customer?`<div class="mt-3 flex items-center gap-3 text-sm"><span class="text-surface-600">Tier:</span>${tierBadge(o.customer.tier)}<span class="text-surface-600">Saldo: ${fmt(o.customer.wallet)}</span></div>`:''}
+        </div>
+        <!-- Layanan -->
+        <div class="bg-white rounded-xl border border-surface-200 p-5">
+          <h3 class="font-bold text-surface-800 mb-4"><i class="fas fa-concierge-bell mr-2 text-brand-500"></i>Layanan</h3>
+          <div class="flex gap-2 mb-4">
+            ${['kiloan','satuan'].map(m=>`<button onclick="S.newOrder.mode='${m}';render()" class="px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${o.mode===m?'bg-brand-500 text-white shadow-lg shadow-brand-500/25':'bg-surface-100 text-surface-600 hover:bg-surface-200'}">${m==='kiloan'?'KILOAN':'SATUAN'}</button>`).join('')}
+          </div>
+          <div class="flex gap-2 mb-4">
+            ${['regular','express','dry_clean'].map(s=>`<button onclick="S.newOrder.service='${s}';render()" class="px-4 py-2 rounded-lg text-xs font-semibold transition-all ${o.service===s?'bg-surface-900 text-white':'bg-surface-100 text-surface-500 hover:bg-surface-200'}">${{regular:'Reguler',express:'Express',dry_clean:'Dry Clean'}[s]}</button>`).join('')}
+          </div>
+          ${o.mode==='kiloan'?`
+            <div>
+              <label class="text-sm text-surface-600 mb-1 block">Berat (kg)</label>
+              <input type="number" step="0.1" min="0" value="${o.weight}" oninput="S.newOrder.weight=this.value;render()" class="w-32 border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="0.0">
+              ${parseFloat(o.weight)>0?`<p class="text-xs text-surface-400 mt-1">Tarif: ${fmt(calcPrice(o.service,parseFloat(o.weight)))} / ${({regular:'kg',express:'kg',dry_clean:'kg'})[o.service]}</p>`:''}
+            </div>
+          `:`
+            <div id="items-list" class="space-y-2">
+              ${o.items.map((it,idx)=>`
+                <div class="flex gap-2 items-center bg-surface-50 rounded-lg p-2">
+                  <select onchange="S.newOrder.items[${idx}].type=this.value;render()" class="border border-surface-300 rounded-lg px-2 py-1.5 text-sm flex-1">
+                    <option value="">Pilih jenis...</option>
+                    ${S.itemPricing.map(p=>`<option value="${p.type}" ${it.type===p.type?'selected':''}>${p.type} — ${fmt(p.price)}</option>`).join('')}
+                  </select>
+                  <input type="text" placeholder="Warna" value="${it.color||''}" oninput="S.newOrder.items[${idx}].color=this.value" class="border border-surface-300 rounded-lg px-2 py-1.5 text-sm w-24">
+                  <input type="text" placeholder="Brand" value="${it.brand||''}" oninput="S.newOrder.items[${idx}].brand=this.value" class="border border-surface-300 rounded-lg px-2 py-1.5 text-sm w-24">
+                  <input type="text" placeholder="Catatan" value="${it.notes||''}" oninput="S.newOrder.items[${idx}].notes=this.value" class="border border-surface-300 rounded-lg px-2 py-1.5 text-sm flex-1">
+                  <button onclick="S.newOrder.items.splice(${idx},1);render()" class="w-8 h-8 rounded-lg bg-red-100 text-red-500 hover:bg-red-200 flex items-center justify-center text-xs"><i class="fas fa-trash"></i></button>
+                </div>
+              `).join('')}
+              <button onclick="S.newOrder.items.push({type:'',color:'',brand:'',notes:''});render()" class="w-full py-2 border-2 border-dashed border-surface-300 rounded-lg text-surface-400 text-sm font-medium hover:border-brand-400 hover:text-brand-500 transition-colors"><i class="fas fa-plus mr-1"></i>Tambah Item</button>
+            </div>
+          `}
+        </div>
+        <!-- Catatan -->
+        <div class="bg-white rounded-xl border border-surface-200 p-5">
+          <h3 class="font-bold text-surface-800 mb-3"><i class="fas fa-sticky-note mr-2 text-brand-500"></i>Catatan untuk Workshop</h3>
+          <textarea id="order-notes" rows="2" placeholder="Contoh: Pisahkan warna gelap, jangan pakai pewangi..." class="w-full border border-surface-300 rounded-lg px-4 py-2.5 text-sm resize-none" oninput="S.newOrder.notes=this.value">${o.notes}</textarea>
+        </div>
+      </div>
+      <!-- Ringkasan Kanan -->
+      <div class="space-y-4">
+        <div class="bg-white rounded-xl border border-surface-200 p-5 sticky top-0">
+          <h3 class="font-bold text-surface-800 mb-4">Ringkasan Order</h3>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-surface-500">Layanan</span><span class="font-medium">${{regular:'Reguler',express:'Express',dry_clean:'Dry Clean'}[o.service]} ${o.mode==='kiloan'?'('+o.weight+' kg)':'(Satuan)'}</span></div>
+            ${o.mode==='satuan'?o.items.filter(i=>i.type).map(i=>`<div class="flex justify-between"><span class="text-surface-500">${i.type}${i.color?' ('+i.color+')':''}</span><span class="font-medium">${fmt(S.itemPricing.find(p=>p.type===i.type)?.price||0)}</span></div>`).join(''):''}
+            <div class="flex justify-between"><span class="text-surface-500">Subtotal</span><span class="font-medium">${fmt(price)}</span></div>
+            ${disc>0?`<div class="flex justify-between text-green-600"><span>Diskon ${o.customer.tier} (${disc}%)</span><span class="font-medium">-${fmt(Math.round(price*disc/100))}</span></div>`:''}
+            ${S.ppnMode!=='nonaktif'?(()=>{const ppn=calcPpn(afterDisc,S.ppnMode,S.ppnRate);return `<div class="flex justify-between"><span class="text-surface-500">PPN ${ppn.ppnRate}% (${S.ppnMode==='include'?'Include':'Exclude'})</span><span class="font-medium text-surface-600">${fmt(ppn.ppnAmount)}</span></div>`;})():''}
+            ${S.roundingMode!=='none'?(()=>{const tot=calcPpn(afterDisc,S.ppnMode,S.ppnRate).totalAfterPpn;const diff=applyRounding(tot,S.roundingMode)-tot;return diff!==0?`<div class="flex justify-between"><span class="text-surface-500">Pembulatan (${S.roundingMode})</span><span class="font-medium text-surface-500">${diff>0?'+':''}${fmt(diff)}</span></div>`:'';})():''}
+            <div class="border-t border-surface-200 pt-2 flex justify-between text-base"><span class="font-bold">Total</span><span class="font-bold text-brand-600">${fmt(calcTotalBreakdown(price,disc,S.roundingMode,S.ppnMode,S.ppnRate).total)}</span></div>
+          </div>
+          <!-- Pembayaran -->
+          <div class="mt-4 space-y-2">
+            <label class="text-sm text-surface-600">Metode Pembayaran</label>
+            <div class="grid grid-cols-3 gap-2">
+              ${['cash','qris','wallet'].map(m=>`<button onclick="S.newOrder.payMethod='${m}';render()" class="py-2 rounded-lg text-xs font-semibold transition-all ${o.payMethod===m?'bg-brand-500 text-white':'bg-surface-100 text-surface-500 hover:bg-surface-200'}">${{cash:'Tunai',qris:'QRIS',wallet:'Saldo'}[m]}</button>`).join('')}
+            </div>
+            ${o.payMethod==='wallet'&&o.customer&&o.customer.wallet<calcTotalBreakdown(price,disc,S.roundingMode,S.ppnMode,S.ppnRate).total?`<p class="text-xs text-red-500"><i class="fas fa-exclamation-triangle mr-1"></i>Saldo tidak mencukupi</p>`:''}
+          </div>
+          ${S.addOnTarget?`<div class="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm"><i class="fas fa-plus-circle text-blue-500 mr-1"></i>Mode <strong>Add-On</strong>: Menambahkan ke order <strong>${S.addOnTarget.code}</strong><button onclick="S.addOnTarget=null;render()" class="ml-2 text-xs text-blue-600 underline">Batal</button></div>`:''}
+          <!-- Aksi -->
+          <div class="mt-5 flex gap-2">
+            <button onclick="S.newOrder={mode:'kiloan',customer:null,service:'regular',weight:'',items:[],notes:'',payMethod:'cash'};S.addOnTarget=null;render()" class="flex-1 py-2.5 border border-surface-300 rounded-lg text-sm font-semibold text-surface-600 hover:bg-surface-100 transition-colors">Batal</button>
+            <button onclick="submitOrder()" class="flex-1 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-brand-500/25 transition-colors" ${(!o.customer||((o.mode==='kiloan'&&!parseFloat(o.weight))||(o.mode==='satuan'&&!o.items.some(i=>i.type))))?'disabled style="opacity:0.5;cursor:not-allowed"':''}>${S.addOnTarget?'Tambah ke Order':'Proses & Cetak'}</button>
+          </div>
+          ${!o.customer?'<p class="text-xs text-red-400 mt-2 text-center">Pilih pelanggan terlebih dahulu</p>':''}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function searchCustomer(q) {
+  const dd = $('cust-dropdown');
+  if (!q || q.length < 2) { dd.classList.add('hidden'); return; }
+  const results = S.customers.filter(c => c.name.toLowerCase().includes(q.toLowerCase()) || c.phone.includes(q));
+  if (results.length === 0) {
+    const phone = formatPhone(q);
+    const valid = validatePhone(phone);
+    dd.innerHTML = valid
+      ? `<button class="w-full px-4 py-2.5 text-left hover:bg-surface-50 flex items-center justify-between transition-colors" onclick="createCustomer('${phone}')">
+          <div><p class="text-sm font-medium text-surface-800">Pelanggan Baru</p><p class="text-xs text-surface-400">${phone} <span class="text-green-600 font-medium">(valid)</span></p></div>
+          <span class="text-xs text-brand-600"><i class="fas fa-plus mr-1"></i>Buat</span>
+        </button>`
+      : '<div class="px-4 py-3 text-sm text-surface-400">Pelanggan tidak ditemukan. Ketik nomor HP valid (62xxx)</div>';
+    dd.classList.remove('hidden');
+    return;
+  }
+  dd.innerHTML = results.map(c => `
+    <button class="w-full px-4 py-2.5 text-left hover:bg-surface-50 flex items-center justify-between transition-colors" onclick="selectCustomer(${c.id})">
+      <div><p class="text-sm font-medium text-surface-800">${c.name}</p><p class="text-xs text-surface-400">${c.phone}</p></div>
+      ${tierBadge(c.tier)}
+    </button>
+  `).join('');
+  dd.classList.remove('hidden');
+  // Klik di luar dropdown untuk menutup
+  setTimeout(()=>{
+    document.addEventListener('click',function handler(e){
+      if(!dd.contains(e.target)&&e.target.id!=='cust-search'){ dd.classList.add('hidden'); document.removeEventListener('click',handler); }
+    });
+  },10);
+}
+
+function createCustomer(phone) {
+  const newId = Math.max(...S.customers.map(c=>c.id),0) + 1;
+  const cust = { id:newId, name:'Pelanggan Baru', phone, tier:'REGULAR', wallet:0, totalSpent:0, lastOrder:'2024-05-01' };
+  S.customers.push(cust);
+  S.newOrder.customer = cust;
+  $('cust-dropdown').classList.add('hidden');
+  toast('Pelanggan baru dibuat: '+phone, 'success');
+  render();
+}
+
+function selectCustomer(id) {
+  S.newOrder.customer = S.customers.find(c=>c.id===id);
+  $('cust-dropdown').classList.add('hidden');
+  render();
+}
+
+function submitOrder() {
+  const o = S.newOrder;
+  if (!o.customer) return;
+  const price = o.mode==='kiloan' ? calcPrice(o.service, parseFloat(o.weight)||0) : o.items.reduce((a,it)=>a+(S.itemPricing.find(p=>p.type===it.type)?.price||0),0);
+  const disc = S.membershipTiers.find(t=>t.code===o.customer.tier)?.discount||0;
+  const breakdown = calcTotalBreakdown(price, disc, S.roundingMode, S.ppnMode, S.ppnRate);
+
+  if (S.addOnTarget) {
+    const target = S.orders.find(x => x.code === S.addOnTarget.code);
+    if (target) {
+      if (o.mode === 'kiloan' && parseFloat(o.weight)) {
+        target.weight = (target.weight||0) + parseFloat(o.weight);
+        target.items.push({type:'Kiloan',color:'',notes:o.notes,status:'received'});
+      } else {
+        o.items.filter(i=>i.type).forEach(it => target.items.push({...it,status:'received'}));
+      }
+      target.total += breakdown.total;
+      if (target.total < 0) target.total = 0;
+      toast(`Add-On berhasil! ${target.code} diperbarui.`, 'success');
+    }
+    S.addOnTarget = null;
+    S.newOrder = { mode:'kiloan', customer:null, service:'regular', weight:'', items:[], notes:'', payMethod:'cash' };
+    nav('orders');
+    return;
+  }
+
+  const newId = Math.max(...S.orders.map(x=>x.id)) + 1;
+  const code = 'LND-240501-' + String(newId).padStart(3,'0');
+  const items = o.mode==='kiloan'
+    ? [{type:'Kiloan',color:'',notes:o.notes,status:'received'}]
+    : o.items.filter(i=>i.type).map(it => ({...it,status:'received'}));
+  const order = {
+    id: newId, code, customer: o.customer.name, phone: o.customer.phone,
+    status: 'received', service: o.service, weight: o.mode==='kiloan'?parseFloat(o.weight)||0:0,
+    total: breakdown.total, payMethod: o.payMethod, payStatus: 'paid',
+    ppnAmount: breakdown.ppnAmount, ppnRate: breakdown.ppnRate,
+    roundingDiff: breakdown.roundingDiff,
+    items, receivedAt: '2024-05-01 ' + new Date().toTimeString().slice(0,5), completedAt: null
+  };
+  S.orders.push(order);
+  printEscPos(order);
+  toast(`Order ${code} berhasil dibuat! Label dicetak.`, 'success');
+  S.newOrder = { mode:'kiloan', customer:null, service:'regular', weight:'', items:[], notes:'', payMethod:'cash' };
+  nav('dashboard');
+}
+
+// ============================================================
+// DAFTAR ORDER
+// ============================================================
+function pageOrderList() {
+  const statuses = ['received','washing','drying','ironing','quality_check','packing','ready','completed','cancelled'];
+  return `
+  <div class="fade-in space-y-4">
+    <div class="flex flex-wrap gap-2">
+      <button onclick="filterOrders('all')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-900 text-white">Semua (${S.orders.length})</button>
+      ${statuses.map(s=>{const c=S.orders.filter(o=>o.status===s).length; return c?`<button onclick="filterOrders('${s}')" class="px-3 py-1.5 rounded-lg text-xs font-semibold ${statusColor(s)}">${statusLabel(s)} (${c})</button>`:'';}).join('')}
+    </div>
+    <div class="bg-white rounded-xl border border-surface-200 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm" id="orders-table">
+          <thead class="bg-surface-50"><tr>
+            <th class="text-left px-4 py-3 font-semibold text-surface-600">Kode</th>
+            <th class="text-left px-4 py-3 font-semibold text-surface-600">Pelanggan</th>
+            <th class="text-left px-4 py-3 font-semibold text-surface-600">Layanan</th>
+            <th class="text-left px-4 py-3 font-semibold text-surface-600">Status</th>
+            <th class="text-right px-4 py-3 font-semibold text-surface-600">Total</th>
+            <th class="text-left px-4 py-3 font-semibold text-surface-600">Bayar</th>
+            <th class="text-left px-4 py-3 font-semibold text-surface-600">Waktu</th>
+            <th class="text-center px-4 py-3 font-semibold text-surface-600">Aksi</th>
+          </tr></thead>
+          <tbody class="divide-y divide-surface-100" id="orders-tbody">
+            ${S.orders.map(o=>`
+              <tr class="hover:bg-surface-50 transition-colors cursor-pointer order-row" data-status="${o.status}" onclick="showOrderDetail(${o.id})">
+                <td class="px-4 py-3 font-mono font-semibold text-surface-800">${o.code}</td>
+                <td class="px-4 py-3"><p class="font-medium">${o.customer}</p><p class="text-xs text-surface-400">${o.phone}</p></td>
+                <td class="px-4 py-3 text-surface-600">${{regular:'Reguler',express:'Express',dry_clean:'Dry Clean'}[o.service]}${o.weight?' '+o.weight+'kg':''}</td>
+                <td class="px-4 py-3"><span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColor(o.status)}">${statusLabel(o.status)}</span></td>
+                <td class="px-4 py-3 text-right font-semibold">${fmt(o.total)}</td>
+                <td class="px-4 py-3"><span class="text-xs font-medium ${{cash:'text-green-600',qris:'text-blue-600',wallet:'text-purple-600'}[o.payMethod]}">${{cash:'Tunai',qris:'QRIS',wallet:'Saldo'}[o.payMethod]}</span></td>
+                <td class="px-4 py-3 text-surface-500 text-xs">${o.receivedAt}</td>
+                <td class="px-4 py-3 text-center">${!['completed','cancelled'].includes(o.status)?`<button onclick="event.stopPropagation();startAddOn('${o.code}')" class="px-2 py-1 text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg transition-colors"><i class="fas fa-plus mr-1"></i>Add-On</button>`:'<span class="text-surface-300 text-xs">—</span>'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+function filterOrders(status) {
+  document.querySelectorAll('.order-row').forEach(r => {
+    r.style.display = (status==='all' || r.dataset.status===status) ? '' : 'none';
+  });
+}
+
+function showOrderDetail(id) {
+  const o = S.orders.find(x=>x.id===id);
+  if (!o) return;
+  showModal(`Detail Order ${o.code}`, `
+    <div class="space-y-4">
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <div><span class="text-surface-500">Pelanggan</span><p class="font-semibold">${o.customer}</p></div>
+        <div><span class="text-surface-500">Telepon</span><p class="font-semibold">${o.phone}</p></div>
+        <div><span class="text-surface-500">Layanan</span><p class="font-semibold">${{regular:'Reguler',express:'Express',dry_clean:'Dry Clean'}[o.service]}</p></div>
+        <div><span class="text-surface-500">Status</span><p><span class="px-2 py-1 rounded-full text-xs font-semibold ${statusColor(o.status)}">${statusLabel(o.status)}</span></p></div>
+        <div><span class="text-surface-500">Total</span><p class="font-bold text-brand-600">${fmt(o.total)}</p></div>
+        <div><span class="text-surface-500">Pembayaran</span><p class="font-semibold">${{cash:'Tunai',qris:'QRIS',wallet:'Saldo'}[o.payMethod]} — ${o.payStatus==='paid'?'Lunas':'Belum'}</p></div>
+        ${o.ppnAmount?`<div><span class="text-surface-500">PPN ${o.ppnRate||0}%</span><p class="font-semibold">${fmt(o.ppnAmount)}</p></div>`:''}
+        ${o.roundingDiff?`<div><span class="text-surface-500">Pembulatan</span><p class="font-semibold">${fmt(o.roundingDiff)}</p></div>`:''}
+      </div>
+      <div>
+        <span class="text-surface-500 text-sm">Item <span class="text-surface-400 font-normal">(status per-item)</span></span>
+        <div class="mt-1 space-y-1">${o.items.map(i=>`<div class="bg-surface-50 rounded-lg px-3 py-2 text-sm flex items-center justify-between"><div><span class="font-medium">${i.type}</span>${i.color?' — '+i.color:''}${i.brand?' ('+i.brand+')':''}${i.notes?'<p class="text-xs text-orange-600 mt-0.5"><i class="fas fa-sticky-note mr-1"></i>'+i.notes+'</p>':''}</div><span class="px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor(i.status||o.status)} shrink-0">${statusLabel(i.status||o.status)}</span></div>`).join('')}</div>
+      </div>
+      <!-- State Machine Progress -->
+      <div>
+        <span class="text-surface-500 text-sm">Progress</span>
+        <div class="mt-2 flex items-center gap-1 overflow-x-auto pb-2">
+          ${['received','washing','drying','ironing','quality_check','packing','ready','completed'].map((s,i,arr)=>{
+            const isActive = arr.slice(0,i+1).includes(o.status);
+            const isCurrent = s===o.status;
+            return `<div class="flex items-center shrink-0">
+              <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${isActive?(isCurrent?'bg-brand-500 text-white pulse-dot':'bg-green-500 text-white'):'bg-surface-200 text-surface-400'}">${isActive?'<i class="fas fa-check text-[10px]"></i>':i+1}</div>
+              ${i<arr.length-1?`<div class="w-6 h-0.5 ${arr.slice(0,i+1).includes(o.status)?'bg-green-500':'bg-surface-200'}"></div>`:''}
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="flex justify-between text-[10px] text-surface-400 mt-1">
+          <span>Diterima</span><span>Cuci</span><span>Kering</span><span>Setrika</span><span>QC</span><span>Pack</span><span>Siap</span><span>Selesai</span>
+        </div>
+      </div>
+    </div>
+  `, `<button onclick="closeModal();if(S.page==='orders')render()" class="px-4 py-2 bg-surface-100 hover:bg-surface-200 rounded-lg text-sm font-medium transition-colors">Tutup</button>`);
+}
+
+function startAddOn(code) {
+  const o = S.orders.find(x => x.code === code);
+  if (!o) return;
+  S.addOnTarget = o;
+  S.newOrder = { mode:'kiloan', customer:S.customers.find(c=>c.name===o.customer), service:'regular', weight:'', items:[], notes:'', payMethod:'cash' };
+  toast('Mode Add-On: Tambahkan item ke ' + code, 'info');
+  nav('new-order');
+}
+
+// ============================================================
+// SHIFT RECONCILIATION
+// ============================================================
+function pageShiftReconciliation() {
+  const sh = S.shifts[0];
+  return `
+  <div class="fade-in space-y-6">
+    <div class="bg-white rounded-xl border border-surface-200 p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h3 class="font-bold text-lg text-surface-800">Shift Kasir — ${sh.cashier}</h3>
+          <p class="text-sm text-surface-500">Mulai: ${sh.start} ${sh.end?'| Selesai: '+sh.end:''}</p>
+        </div>
+        <span class="px-3 py-1 rounded-full text-xs font-semibold ${sh.status==='open'?'bg-green-100 text-green-700':'bg-surface-200 text-surface-600'}">${sh.status==='open'?'Aktif':'Tutup'}</span>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-surface-50 rounded-lg p-4 text-center">
+          <p class="text-xs text-surface-500 mb-1">Penerimaan Tunai</p>
+          <p class="text-xl font-bold text-surface-900">${fmt(sh.cashExpected)}</p>
+        </div>
+        <div class="bg-surface-50 rounded-lg p-4 text-center">
+          <p class="text-xs text-surface-500 mb-1">QRIS Bruto</p>
+          <p class="text-xl font-bold text-surface-900">${fmt(sh.qrisGross)}</p>
+        </div>
+        <div class="bg-surface-50 rounded-lg p-4 text-center">
+          <p class="text-xs text-surface-500 mb-1">MDR (1.5%)</p>
+          <p class="text-xl font-bold text-red-600">-${fmt(sh.qrisMDR)}</p>
+        </div>
+        <div class="bg-surface-50 rounded-lg p-4 text-center">
+          <p class="text-xs text-surface-500 mb-1">QRIS Netto</p>
+          <p class="text-xl font-bold text-green-600">${fmt(sh.qrisNet)}</p>
+        </div>
+      </div>
+      ${sh.status==='open'?`
+        <div class="border-t border-surface-200 pt-4">
+          <h4 class="font-semibold text-surface-800 mb-3">Tutup Shift</h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="text-sm text-surface-600 block mb-1">Saldo Awal Laci</label>
+              <input type="number" id="shift-start" value="500000" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="text-sm text-surface-600 block mb-1">Uang Fisik di Laci</label>
+              <input type="number" id="shift-actual" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Hitung uang fisik...">
+            </div>
+            <div class="flex items-end">
+              <button onclick="closeShift()" class="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold transition-colors">Tutup Shift</button>
+            </div>
+          </div>
+        </div>
+      `:`<div class="border-t border-surface-200 pt-4"><p class="text-sm text-surface-500">Shift telah ditutup pada ${sh.end}</p></div>`}
+    </div>
+  </div>`;
+}
+
+function closeShift() {
+  const actual = parseInt($('shift-actual')?.value)||0;
+  const expected = 500000 + S.shifts[0].cashExpected;
+  const diff = actual - expected;
+  S.shifts[0].end = '2024-05-01 ' + new Date().toTimeString().slice(0,5);
+  S.shifts[0].status = 'closed';
+  S.shifts[0].cashActual = actual;
+  showModal('Shift Ditutup', `
+    <div class="text-center space-y-3">
+      <div class="w-16 h-16 rounded-full ${Math.abs(diff)<1000?'bg-green-100':'bg-red-100'} flex items-center justify-center mx-auto">
+        <i class="fas ${Math.abs(diff)<1000?'fa-check-circle text-green-500':'fa-exclamation-circle text-red-500'} text-2xl"></i>
+      </div>
+      <p class="font-bold text-lg">Selisih: ${diff>=0?'+':''}${fmt(diff)}</p>
+      <p class="text-sm text-surface-500">Uang fisik: ${fmt(actual)} | Harusnya: ${fmt(expected)}</p>
+      ${Math.abs(diff)>=1000?'<p class="text-sm text-red-500">Selisih melebihi toleransi Rp 1.000. Laporkan ke admin.</p>':'<p class="text-sm text-green-600">Selisih dalam toleransi. Shift berhasil ditutup.</p>'}
+    </div>
+  `, `<button onclick="closeModal();render()" class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-semibold transition-colors">OK</button>`);
+}
+
+// ============================================================
+// WORKSHOP SCANNER — UUID, debounce 300ms, cooldown 1s, offline
+// ============================================================
+let scanTimer = null;
+
+function pageScanner() {
+  const r = S.scanResult;
+  const queueLen = S.offlineQueue.length;
+  return `
+  <div class="w-full max-w-lg mx-auto space-y-4 fade-in">
+    ${queueLen>0?`<div class="bg-amber-500/20 border border-amber-500/30 rounded-xl px-4 py-2 text-amber-400 text-sm flex items-center gap-2"><i class="fas fa-cloud-upload-alt"></i>${queueLen} scan offline menunggu sinkronisasi <button onclick="syncOfflineQueue();render()" class="ml-auto px-2 py-1 bg-amber-500 text-white text-xs rounded-lg font-semibold">Sync</button></div>`:''}
+    <!-- Scanner Area -->
+    <div class="relative w-full aspect-[4/3] bg-surface-900 rounded-2xl overflow-hidden border-2 ${S.scanCooldown?'border-green-500/80':r?'border-green-500/50':'border-brand-500/50'}">
+      <div class="absolute inset-4 border-2 border-dashed ${r?'border-green-500/30':'border-brand-500/30'} rounded-xl"></div>
+      ${!r?'<div class="scanner-line absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-brand-400 to-transparent"></div>':''}
+      <div class="absolute inset-0 flex items-center justify-center">
+        ${r?`
+          <div class="text-center">
+            <div class="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center mx-auto mb-3"><i class="fas fa-check text-white text-2xl"></i></div>
+            <p class="text-green-400 font-bold text-lg">${r.code}</p>
+          </div>
+        `:`
+          <div class="text-center">
+            <i class="fas fa-barcode text-4xl text-surface-600 mb-2"></i>
+            <p class="text-surface-500 text-sm">${S.scanCooldown?'Scan berhasil! Silakan lanjutkan...':'Arahkan barcode ke scanner'}</p>
+          </div>
+        `}
+      </div>
+    </div>
+    <!-- Hidden input for USB scanner -->
+    <input type="text" id="scanner-input" class="opacity-0 absolute -z-10" autofocus placeholder="scan" onkeydown="if(event.key==='Enter'){handleScan(this.value);this.value='';}">
+    <!-- Scan Result -->
+    ${r?`
+      <div class="bg-surface-900 rounded-2xl p-5 border border-surface-700 slideUp">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <p class="text-white font-bold text-xl">${r.code}</p>
+            <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${statusColor(r.status)}">${statusLabel(r.status)}</span>
+          </div>
+          <button onclick="S.scanResult=null;render();document.getElementById('scanner-input')?.focus()" class="w-8 h-8 rounded-full bg-surface-800 text-surface-400 hover:text-white flex items-center justify-center"><i class="fas fa-times"></i></button>
+        </div>
+        ${r.instructions?`<div class="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 mb-4"><p class="text-orange-400 text-sm font-medium"><i class="fas fa-exclamation-triangle mr-2"></i>${r.instructions}</p></div>`:''}
+        ${r.items?`<div class="space-y-2 mb-4">${r.items.map(i=>`<div class="flex items-center gap-2 text-surface-400 text-sm"><i class="fas fa-tshirt text-surface-600"></i>${i.type}${i.color?' — '+i.color:''}${i.notes?' <span class="text-orange-400">('+i.notes+')</span>':''}<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusColor(i.status||r.status)} ml-auto">${statusLabel(i.status||r.status)}</span></div>`).join('')}</div>`:''}
+        ${nextStatus(r.status)?`
+          <button onclick="advanceOrder('${r.code}')" id="advance-btn" class="w-full py-4 bg-green-500 hover:bg-green-600 text-white rounded-xl text-lg font-bold transition-colors shadow-lg shadow-green-500/20">
+            <i class="fas fa-arrow-right mr-2"></i>${nextStatusLabel(r.status)}
+          </button>
+        `:`
+          <button onclick="S.scanResult=null;render();document.getElementById('scanner-input')?.focus()" class="w-full py-4 bg-surface-700 hover:bg-surface-600 text-white rounded-xl text-lg font-bold transition-colors">
+            <i class="fas fa-redo mr-2"></i>Scan Berikutnya
+          </button>
+        `}
+        <button onclick="reportIssue('${r.code}')" class="w-full py-3 mt-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-sm font-semibold transition-colors border border-red-500/20">
+          <i class="fas fa-flag mr-2"></i>Laporkan Masalah
+        </button>
+      </div>
+    `:`
+      <div class="bg-surface-900 rounded-2xl p-5 border border-surface-700 text-center">
+        <p class="text-surface-500 text-sm">Mode: USB Scanner / Kamera</p>
+        <p class="text-surface-600 text-xs mt-1">UUID idempotency aktif — debounce 300ms</p>
+        <div class="mt-3 flex gap-2 justify-center">
+          ${S.orders.filter(o=>o.status!=='completed'&&o.status!=='cancelled').slice(0,5).map(o=>`
+            <button onclick="handleScan('${o.code}')" class="px-3 py-1.5 bg-surface-800 hover:bg-surface-700 text-surface-400 text-xs rounded-lg transition-colors">${o.code.split('-').pop()}</button>
+          `).join('')}
+        </div>
+        <p class="text-surface-600 text-xs mt-2">Quick pick untuk demo</p>
+      </div>
+    `}
+  </div>`;
+}
+
+function handleScan(code) {
+  code = code.trim().replace(/[^A-Za-z0-9\-]/g,'');
+  if (!code) return;
+
+  // Debounce 300ms: cegah scan ganda dalam 300ms
+  const now = Date.now();
+  const lastScan = S.scanIdempotency[code] || 0;
+  if (now - lastScan < 300) { return; }
+  S.scanIdempotency[code] = now;
+
+  // Cooldown: cegah scan baru jika masih dalam cooldown 1 detik
+  if (S.scanCooldown) { toast('Tunggu sebentar...','warning'); return; }
+
+  const o = S.orders.find(x => x.code === code);
+  if (!o) { toast('Order tidak ditemukan: '+code,'error'); return; }
+  if (o.status === 'completed' || o.status === 'cancelled') { toast('Order sudah selesai/dibatalkan','warning'); return; }
+
+  // Set scan result dengan item-level status
+  const hdrStatus = orderHeaderStatus(o);
+  S.scanResult = {
+    ...o,
+    status: hdrStatus,
+    instructions: o.items.map(i=>i.notes).filter(Boolean).join('. ') || null
+  };
+
+  // Cooldown 1 detik: disable UI
+  S.scanCooldown = true;
+  render();
+  setTimeout(() => {
+    document.getElementById('scanner-input')?.focus();
+  }, 50);
+
+  setTimeout(() => {
+    S.scanCooldown = false;
+    if (!S.scanResult) render();
+  }, 1000);
+}
+
+function advanceOrder(code) {
+  const o = S.orders.find(x=>x.code===code);
+  if (!o) return;
+  const ns = nextStatus(o.status);
+  if (!ns) return;
+
+  // Cek koneksi offline: jika offline, simpan ke queue
+  if (!navigator.onLine) {
+    S.offlineQueue.push({ code, targetStatus: ns, timestamp: new Date().toISOString() });
+    toast('Offline: scan disimpan, akan sync otomatis','info');
+    S.scanResult = null;
+    render();
+    setTimeout(()=>document.getElementById('scanner-input')?.focus(), 100);
+    return;
+  }
+
+  // Cek stok jika mulai cuci
+  if (ns === 'washing') {
+    const det = S.materials.find(m=>m.name==='Deterjen Cair');
+    if (det && det.stock < (o.weight * 0.02)) {
+      toast('Gagal: Stok deterjen tidak cukup!','error');
+      return;
+    }
+    if (det) det.stock = Math.max(0, det.stock - o.weight * 0.02);
+  }
+
+  // Update item-level status untuk split order
+  const isSplit = o.items.length > 1;
+  if (isSplit) {
+    o.items.forEach(item => {
+      if (item.status === o.status || !item.status) {
+        item.status = ns;
+      }
+    });
+  }
+  o.status = ns;
+  toast(`${code} -> ${statusLabel(ns)}`,'success');
+  S.scanResult = null;
+  render();
+  setTimeout(()=>document.getElementById('scanner-input')?.focus(), 100);
+}
+
+function reportIssue(code) {
+  showModal('Laporkan Masalah', `
+    <div class="space-y-3">
+      <div><label class="text-sm text-surface-600 block mb-1">Kategori</label>
+        <select id="issue-cat" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm">
+          <option value="damaged">Rusak</option><option value="missing">Hilang</option><option value="other">Lainnya</option>
+        </select>
+      </div>
+      <div><label class="text-sm text-surface-600 block mb-1">Keterangan</label>
+        <textarea id="issue-desc" rows="3" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Jelaskan masalahnya..."></textarea>
+      </div>
+    </div>
+  `, `<button onclick="closeModal()" class="px-4 py-2 bg-surface-100 rounded-lg text-sm font-medium">Batal</button>
+      <button onclick="submitIssue('${code}')" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-semibold">Kirim Laporan</button>`);
+}
+
+function submitIssue(code) {
+  const o = S.orders.find(x=>x.code===code);
+  if (o) o.has_issue = true;
+  S.complaints.push({ id: S.complaints.length+1, orderCode:code, customer:o?.customer||'', category:$('issue-cat')?.value||'other', status:'reported', desc:$('issue-desc')?.value||'', date:'2024-05-01' });
+  closeModal(); toast('Laporan masalah berhasil dikirim','success');
+  S.scanResult = null; render();
+}
+
+// ============================================================
+// OWNER DASHBOARD
+// ============================================================
+function pageOwnerDashboard() {
+  const todayOrders = S.orders.filter(o=>o.receivedAt?.startsWith('2024-05-01'));
+  const revenue = todayOrders.reduce((a,o)=>a+o.total,0);
+  const hpp = todayOrders.filter(o=>!['received','cancelled'].includes(o.status)).reduce((a,o)=>a + (o.weight*0.02*25000 + o.weight*0.005*35000),0);
+  const opex = 150000;
+  const netProfit = revenue - hpp - opex;
+  const avgTime = 18;
+  return `
+  <div class="fade-in space-y-6">
+    <!-- Alert Banner -->
+    ${S.materials.filter(m=>m.stock<=m.minStock).length?`
+    <div class="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0"><i class="fas fa-exclamation-triangle text-red-500"></i></div>
+      <div class="flex-1">
+        <p class="font-semibold text-red-800 text-sm">Stok Kritis!</p>
+        <p class="text-red-600 text-xs">${S.materials.filter(m=>m.stock<=m.minStock).map(m=>m.name+' tersisa '+m.stock+' '+m.unit).join(', ')}</p>
+      </div>
+      <button onclick="nav('inventory')" class="px-3 py-1.5 bg-red-500 text-white text-xs font-semibold rounded-lg hover:bg-red-600 transition-colors">Cek Stok</button>
+    </div>`:''}
+    <!-- Main Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="md:col-span-1 bg-surface-900 rounded-2xl p-6 text-white">
+        <p class="text-surface-400 text-sm mb-1">Laba Bersih Hari Ini</p>
+        <p class="text-3xl font-bold ${netProfit>=0?'text-green-400':'text-red-400'}">${netProfit>=0?'+':''}${fmt(netProfit)}</p>
+        <div class="mt-3 space-y-1 text-xs text-surface-400">
+          <div class="flex justify-between"><span>Omzet</span><span class="text-surface-300">${fmt(revenue)}</span></div>
+          <div class="flex justify-between"><span>HPP (Bahan Baku)</span><span class="text-red-400">-${fmt(hpp)}</span></div>
+          <div class="flex justify-between"><span>Opex (Listrik/Gas/Gaji)</span><span class="text-red-400">-${fmt(opex)}</span></div>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl p-6 border border-surface-200">
+        <p class="text-surface-500 text-sm mb-1">Omzet Hari Ini</p>
+        <p class="text-2xl font-bold text-surface-900">${fmt(revenue)}</p>
+        <div class="mt-4 flex items-center gap-4">
+          <div class="flex-1"><canvas id="rev-donut" height="80"></canvas></div>
+          <div class="space-y-1 text-xs">
+            <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>Tunai ${fmt(todayOrders.filter(o=>o.payMethod==='cash').reduce((a,o)=>a+o.total,0))}</div>
+            <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>QRIS ${fmt(todayOrders.filter(o=>o.payMethod==='qris').reduce((a,o)=>a+o.total,0))}</div>
+            <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span>Saldo ${fmt(todayOrders.filter(o=>o.payMethod==='wallet').reduce((a,o)=>a+o.total,0))}</div>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl p-6 border border-surface-200">
+        <p class="text-surface-500 text-sm mb-1">Rata-rata Waktu Pengerjaan</p>
+        <p class="text-2xl font-bold text-surface-900">${avgTime} <span class="text-base font-normal text-surface-400">Jam</span></p>
+        <div class="mt-4">
+          <div class="flex justify-between text-xs text-surface-500 mb-1"><span>Target: 24 Jam</span><span class="text-green-600 font-medium">${Math.round((1-avgTime/24)*100)}% lebih cepat</span></div>
+          <div class="w-full h-2 bg-surface-100 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-brand-400 to-green-500 rounded-full transition-all" style="width:${Math.min(100,avgTime/24*100)}%"></div></div>
+        </div>
+        <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+          <div class="bg-surface-50 rounded-lg p-2"><p class="text-lg font-bold text-surface-800">${todayOrders.length}</p><p class="text-[10px] text-surface-400">Order</p></div>
+          <div class="bg-surface-50 rounded-lg p-2"><p class="text-lg font-bold text-surface-800">${todayOrders.filter(o=>o.status==='ready').length}</p><p class="text-[10px] text-surface-400">Siap</p></div>
+          <div class="bg-surface-50 rounded-lg p-2"><p class="text-lg font-bold text-surface-800">${todayOrders.filter(o=>o.status!=='completed'&&o.status!=='cancelled').length}</p><p class="text-[10px] text-surface-400">Proses</p></div>
+        </div>
+      </div>
+    </div>
+    <!-- Chart -->
+    <div class="bg-white rounded-2xl border border-surface-200 p-6">
+      <h3 class="font-bold text-surface-800 mb-4">Tren Omzet 7 Hari Terakhir</h3>
+      <canvas id="revenue-chart" height="100"></canvas>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// LIVE MONITOR (KANBAN)
+// ============================================================
+function pageLiveMonitor() {
+  const cols = getKanbanOrders();
+  return `
+  <div class="fade-in">
+    <div class="flex items-center gap-2 mb-4">
+      <span class="w-2 h-2 rounded-full bg-green-500 pulse-dot"></span>
+      <span class="text-sm text-surface-500">Real-time update via WebSocket</span>
+    </div>
+    <div class="flex gap-4 overflow-x-auto pb-4 min-h-[60vh]">
+      ${cols.map(c=>`
+        <div class="shrink-0 w-64">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full ${{received:'bg-blue-500',washing:'bg-cyan-500',drying:'bg-yellow-500',ironing:'bg-orange-500',quality_check:'bg-purple-500',packing:'bg-indigo-500',ready:'bg-green-500'}[c.key]||'bg-surface-400'}"></span>
+              <h4 class="font-semibold text-sm text-surface-700">${c.label}</h4>
+            </div>
+            <span class="text-xs bg-surface-200 text-surface-600 px-2 py-0.5 rounded-full font-semibold">${c.orders.length}</span>
+          </div>
+          <div class="space-y-2">
+            ${c.orders.map(o=>`
+              <div class="kanban-card bg-white rounded-xl p-3 border border-surface-200 cursor-pointer hover:shadow-md transition-shadow" onclick="showOrderDetail(${o.id})">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="font-mono font-bold text-sm text-surface-800">${o.code.split('-').pop()}</span>
+                  <span class="text-[10px] text-surface-400">${o.receivedAt?.split(' ')[1]||''}</span>
+                </div>
+                <p class="text-xs text-surface-600 mb-1">${o.customer}</p>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-surface-400">${o.weight?o.weight+'kg':o.items.length+' item'}</span>
+                  <span class="text-xs font-semibold text-brand-600">${fmt(o.total)}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// FINANCE
+// ============================================================
+function pageFinance() {
+  return `
+  <div class="fade-in space-y-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      ${[
+        { label:'Omzet Bulan Ini', value:fmt(4850000), change:'+12%', up:true },
+        { label:'HPP Bulan Ini', value:fmt(1250000), change:'-3%', up:false },
+        { label:'Laba Bersih', value:fmt(2850000), change:'+18%', up:true },
+        { label:'MDR QRIS', value:fmt(72750), change:'', up:false },
+      ].map(c=>`
+        <div class="bg-white rounded-xl border border-surface-200 p-5 card-hover">
+          <p class="text-sm text-surface-500 mb-1">${c.label}</p>
+          <p class="text-xl font-bold text-surface-900">${c.value}</p>
+          ${c.change?`<p class="text-xs mt-1 ${c.up?'text-green-600':'text-red-600'}"><i class="fas fa-arrow-${c.up?'up':'down'} mr-1"></i>${c.change} vs bulan lalu</p>`:''}
+        </div>
+      `).join('')}
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl border border-surface-200 p-6">
+        <h3 class="font-bold text-surface-800 mb-4">Laba/Rugi Harian</h3>
+        <canvas id="pnl-chart" height="150"></canvas>
+      </div>
+      <div class="bg-white rounded-xl border border-surface-200 p-6">
+        <h3 class="font-bold text-surface-800 mb-4">Komposisi Pendapatan</h3>
+        <canvas id="comp-chart" height="150"></canvas>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// INVENTORY (Pemilik View)
+// ============================================================
+function pageInventory() {
+  return `
+  <div class="fade-in space-y-6">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold text-surface-800">Stok Bahan Baku</h3>
+      <button onclick="nav('inv-master')" class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-semibold transition-colors"><i class="fas fa-plus mr-2"></i>Restok</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      ${S.materials.map(m=>{
+        const pct = m.minStock > 0 ? Math.min(100, (m.stock/m.minStock)*100) : 100;
+        const isLow = m.stock <= m.minStock;
+        const daysLeft = m.avgUsage > 0 ? Math.floor(m.stock / m.avgUsage) : 999;
+        return `
+        <div class="bg-white rounded-xl border ${isLow?'border-red-300':'border-surface-200'} p-5 card-hover">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="font-semibold text-surface-800">${m.name}</h4>
+            ${isLow?'<span class="w-2.5 h-2.5 rounded-full bg-red-500 pulse-dot"></span>':''}
+          </div>
+          <p class="text-2xl font-bold ${isLow?'text-red-600':'text-surface-900'}">${m.stock} <span class="text-sm font-normal text-surface-400">${m.unit}</span></p>
+          <div class="mt-3 w-full h-2 bg-surface-100 rounded-full overflow-hidden">
+            <div class="h-full rounded-full transition-all ${isLow?'bg-red-500':pct<200?'bg-amber-500':'bg-green-500'}" style="width:${Math.min(100,pct)}%"></div>
+          </div>
+          <div class="mt-2 flex justify-between text-xs text-surface-400">
+            <span>Min: ${m.minStock} ${m.unit}</span>
+            <span ${daysLeft<7?'class="text-red-500 font-medium"':''}>~${daysLeft} hari lagi</span>
+          </div>
+          <p class="text-xs text-surface-400 mt-1">HPP: ${fmt(m.costPerUnit)}/${m.unit} &middot; Pemakaian rata-rata: ${m.avgUsage} ${m.unit}/hari</p>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// CRM
+// ============================================================
+function pageCRM() {
+  const churn = S.customers.filter(c => {
+    const d = new Date(c.lastOrder);
+    const diff = (new Date('2024-05-01') - d) / (1000*60*60*24);
+    return diff >= 30;
+  });
+  const vip = S.customers.filter(c => c.tier !== 'REGULAR');
+  return `
+  <div class="fade-in space-y-6">
+    <div class="flex gap-2 border-b border-surface-200">
+      ${['Pelanggan VIP','Tidak Aktif 30 Hari','Semua Pelanggan'].map((t,i)=>`
+        <button class="px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${i===0?'border-brand-500 text-brand-600':'border-transparent text-surface-500 hover:text-surface-700'}" onclick="this.parentElement.querySelectorAll('button').forEach(b=>{b.classList.remove('border-brand-500','text-brand-600');b.classList.add('border-transparent','text-surface-500')});this.classList.remove('border-transparent','text-surface-500');this.classList.add('border-brand-500','text-brand-600');this.nextElementSibling?.nextElementSibling?.click()">${t}</button>
+      `).join('')}
+    </div>
+    <!-- VIP Tab Content -->
+    <div class="bg-white rounded-xl border border-surface-200 overflow-hidden">
+      <div class="px-5 py-3 border-b border-surface-200 flex items-center justify-between">
+        <span class="text-sm text-surface-500">${vip.length} pelanggan VIP</span>
+        <div class="flex gap-2">
+          <button onclick="toast('Link wa.me berhasil disalin ke clipboard','info')" class="px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 text-xs font-semibold rounded-lg transition-colors"><i class="fab fa-whatsapp mr-1"></i>Salin Semua Link</button>
+          <button onclick="toast('WA Blast terkirim ke '+vip.length+' pelanggan','success')" class="px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold rounded-lg transition-colors"><i class="fas fa-paper-plane mr-1"></i>Kirim Promo</button>
+        </div>
+      </div>
+      <div class="divide-y divide-surface-100">
+        ${vip.map(c=>`
+          <div class="px-5 py-3 flex items-center justify-between hover:bg-surface-50 transition-colors">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold text-sm">${c.name.charAt(0)}</div>
+              <div>
+                <p class="text-sm font-semibold text-surface-800">${c.name}</p>
+                <p class="text-xs text-surface-400">${c.phone} &middot; Terakhir: ${c.lastOrder}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              ${tierBadge(c.tier)}
+              <input type="checkbox" class="w-4 h-4 rounded border-surface-300 text-brand-500 focus:ring-brand-500">
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <!-- Churn Section -->
+    <div class="bg-amber-50 rounded-xl border border-amber-200 p-5">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center"><i class="fas fa-user-clock text-amber-600"></i></div>
+        <div>
+          <h4 class="font-bold text-amber-800">Pelanggan Tidak Aktif (30+ Hari)</h4>
+          <p class="text-sm text-amber-600">${churn.length} pelanggan berpotensi churn</p>
+        </div>
+      </div>
+      <div class="space-y-2">
+        ${churn.map(c=>`
+          <div class="flex items-center justify-between bg-white rounded-lg px-4 py-2.5">
+            <div><p class="text-sm font-medium text-surface-800">${c.name}</p><p class="text-xs text-surface-400">${c.phone} &middot; Total: ${fmt(c.totalSpent)}</p></div>
+            <div class="flex gap-2">
+              <a href="https://wa.me/${c.phone}?text=Halo%20${encodeURIComponent(c.name)}%2C%20kami%20rindu%20Anda!" target="_blank" class="px-3 py-1.5 bg-green-500 text-white text-xs font-semibold rounded-lg hover:bg-green-600 transition-colors"><i class="fab fa-whatsapp mr-1"></i>WA</a>
+              <input type="checkbox" class="w-4 h-4 rounded border-surface-300 text-brand-500 focus:ring-brand-500">
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// ADMIN: SETTINGS (WA Dual-Mode)
+// ============================================================
+function pageSettings() {
+  return `
+  <div class="fade-in space-y-6">
+    <!-- WA Settings -->
+    <div class="bg-white rounded-xl border border-surface-200 p-6">
+      <h3 class="font-bold text-surface-800 mb-4"><i class="fab fa-whatsapp mr-2 text-green-500"></i>Pengaturan WhatsApp</h3>
+      <div class="space-y-4">
+        <div>
+          <label class="text-sm text-surface-600 block mb-2">Mode Pengiriman</label>
+          <div class="flex gap-3">
+            <label class="flex-1 cursor-pointer">
+              <input type="radio" name="wa-mode" value="fonnte" ${S.waMode==='fonnte'?'checked':''} onchange="S.waMode='fonnte';render()" class="sr-only peer">
+              <div class="border-2 border-surface-200 peer-checked:border-brand-500 rounded-xl p-4 transition-all peer-checked:bg-brand-50">
+                <div class="flex items-center gap-2 mb-1"><i class="fas fa-robot text-brand-500"></i><span class="font-semibold text-sm">Fonnte (Otomatis)</span></div>
+                <p class="text-xs text-surface-500">WA terkirim otomatis via API saat order diterima/selesai</p>
+              </div>
+            </label>
+            <label class="flex-1 cursor-pointer">
+              <input type="radio" name="wa-mode" value="wa_me" ${S.waMode==='wa_me'?'checked':''} onchange="S.waMode='wa_me';render()" class="sr-only peer">
+              <div class="border-2 border-surface-200 peer-checked:border-brand-500 rounded-xl p-4 transition-all peer-checked:bg-brand-50">
+                <div class="flex items-center gap-2 mb-1"><i class="fas fa-qrcode text-brand-500"></i><span class="font-semibold text-sm">wa.me (Manual)</span></div>
+                <p class="text-xs text-surface-500">QR Code di struk, pelanggan scan manual untuk chat & tracking</p>
+              </div>
+            </label>
+          </div>
+        </div>
+        ${S.waMode==='fonnte'?`
+          <div class="space-y-3 pl-4 border-l-2 border-brand-200">
+            <div><label class="text-sm text-surface-600 block mb-1">Token API Fonnte</label><input type="password" value="abc123tokenhidden" class="w-full max-w-md border border-surface-300 rounded-lg px-3 py-2 text-sm"></div>
+            <div><label class="text-sm text-surface-600 block mb-1">Nomor HP Pengirim (opsional)</label><input type="text" value="62812345678" class="w-full max-w-md border border-surface-300 rounded-lg px-3 py-2 text-sm"></div>
+            <button onclick="toast('WA test terkirim!','success')" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-semibold transition-colors"><i class="fas fa-paper-plane mr-2"></i>Test Kirim WA</button>
+          </div>
+        `:`
+          <div class="bg-surface-50 rounded-lg p-4 pl-4 border-l-2 border-brand-200">
+            <p class="text-sm text-surface-600 mb-2">Preview Template Link wa.me:</p>
+            <code class="text-xs bg-white px-3 py-2 rounded-lg border border-surface-200 block text-surface-700 break-all">wa.me/628xxx?text=Halo%20%7Bcustomer_name%7D%2C%20pesanan%20%7Border_code%7D%20telah%20kami%20terima.%0ACek%20progress%3A%20https%3A%2F%2Ftrack.laundryos.com%2F%7Border_code%7D</code>
+            <p class="text-xs text-surface-400 mt-2">Variabel: {order_code}, {customer_name}, {tracking_url}</p>
+          </div>
+        `}
+        <div>
+          <label class="text-sm text-surface-600 block mb-1">Template Pesan WA</label>
+          <textarea rows="4" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm">Halo {customer_name}, pesanan Anda {order_code} telah kami terima. Estimasi selesai dalam 24 jam. Cek progress: {tracking_url}</textarea>
+        </div>
+        <button onclick="toast('Pengaturan WhatsApp tersimpan!','success')" class="px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-bold transition-colors">Simpan Pengaturan</button>
+      </div>
+    </div>
+    <!-- General Config -->
+    <div class="bg-white rounded-xl border border-surface-200 p-6">
+      <h3 class="font-bold text-surface-800 mb-4"><i class="fas fa-cog mr-2 text-surface-500"></i>Pengaturan Umum</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div><label class="text-sm text-surface-600 block mb-1">Nama Bisnis</label><input type="text" value="ISTANA Laundry" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"></div>
+        <div><label class="text-sm text-surface-600 block mb-1">Cash Rounding</label>
+          <select id="rounding-select" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" onchange="S.roundingMode=this.value">
+            <option value="none" ${S.roundingMode==='none'?'selected':''}>Tanpa Pembulatan</option>
+            <option value="down_100" ${S.roundingMode==='down_100'?'selected':''}>Bulat ke bawah (Rp 100)</option>
+            <option value="up_100" ${S.roundingMode==='up_100'?'selected':''}>Bulat ke atas (Rp 100)</option>
+            <option value="nearest_500" ${S.roundingMode==='nearest_500'?'selected':''}>Terdekat (Rp 500)</option>
+          </select>
+        </div>
+        <div><label class="text-sm text-surface-600 block mb-1">PPN</label>
+          <select id="ppn-select" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" onchange="S.ppnMode=this.value">
+            <option value="nonaktif" ${S.ppnMode==='nonaktif'?'selected':''}>Nonaktif</option>
+            <option value="include" ${S.ppnMode==='include'?'selected':''}>11% (Include)</option>
+            <option value="exclude" ${S.ppnMode==='exclude'?'selected':''}>11% (Exclude)</option>
+          </select>
+        </div>
+        <div><label class="text-sm text-surface-600 block mb-1">Churn Threshold (hari)</label><input type="number" value="30" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"></div>
+      </div>
+      <button onclick="toast('Pengaturan umum tersimpan!','success')" class="mt-4 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-bold transition-colors">Simpan</button>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// ADMIN: PRICING
+// ============================================================
+function pagePricing() {
+  return `
+  <div class="fade-in space-y-6">
+    <div class="flex items-center justify-between">
+      <div><h3 class="font-bold text-surface-800">Harga Dinamis — Kiloan</h3><p class="text-sm text-surface-500">Tarif berubah otomatis berdasarkan berat</p></div>
+      <button onclick="toast('Fitur tambah tier harga (demo)','info')" class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-semibold transition-colors"><i class="fas fa-plus mr-2"></i>Tambah Tier</button>
+    </div>
+    <div class="bg-white rounded-xl border border-surface-200 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-surface-50"><tr>
+          <th class="text-left px-5 py-3 font-semibold text-surface-600">Layanan</th>
+          <th class="text-left px-5 py-3 font-semibold text-surface-600">Min. Berat (kg)</th>
+          <th class="text-left px-5 py-3 font-semibold text-surface-600">Maks. Berat (kg)</th>
+          <th class="text-right px-5 py-3 font-semibold text-surface-600">Harga/kg</th>
+          <th class="text-center px-5 py-3 font-semibold text-surface-600">Aksi</th>
+        </tr></thead>
+        <tbody class="divide-y divide-surface-100">
+          ${S.pricingTiers.map(t=>`
+            <tr class="hover:bg-surface-50 transition-colors">
+              <td class="px-5 py-3 font-medium">${{regular:'Reguler',express:'Express',dry_clean:'Dry Clean'}[t.service]}</td>
+              <td class="px-5 py-3 text-surface-600">${t.minWeight} kg</td>
+              <td class="px-5 py-3 text-surface-600">${t.maxWeight>=999?'∞':t.maxWeight+' kg'}</td>
+              <td class="px-5 py-3 text-right font-bold text-brand-600">${fmt(t.pricePerKg)}</td>
+              <td class="px-5 py-3 text-center"><button class="text-surface-400 hover:text-brand-500 transition-colors"><i class="fas fa-edit"></i></button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    <!-- Item Pricing -->
+    <div class="flex items-center justify-between">
+      <div><h3 class="font-bold text-surface-800">Harga Satuan per Item</h3><p class="text-sm text-surface-500">Untuk layanan per potong pakaian</p></div>
+      <button onclick="toast('Fitur tambah item (demo)','info')" class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-semibold transition-colors"><i class="fas fa-plus mr-2"></i>Tambah Item</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      ${S.itemPricing.map(p=>`
+        <div class="bg-white rounded-xl border border-surface-200 p-4 card-hover">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-surface-800">${p.type}</span>
+            <button class="text-surface-400 hover:text-brand-500 text-xs"><i class="fas fa-edit"></i></button>
+          </div>
+          <p class="text-xl font-bold text-brand-600">${fmt(p.price)}<span class="text-xs font-normal text-surface-400">/pcs</span></p>
+        </div>
+      `).join('')}
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// ADMIN: MASTER INVENTORI
+// ============================================================
+function pageInvMaster() {
+  return `
+  <div class="fade-in space-y-6">
+    <!-- Tabs -->
+    <div class="flex gap-2 border-b border-surface-200">
+      ${['Formula','Restok','Opname','Variance'].map((t,i)=>`
+        <button class="px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${i===0?'border-brand-500 text-brand-600':'border-transparent text-surface-500 hover:text-surface-700'}" onclick="this.parentElement.querySelectorAll('button').forEach(b=>{b.classList.remove('border-brand-500','text-brand-600');b.classList.add('border-transparent','text-surface-500')});this.classList.remove('border-transparent','text-surface-500');this.classList.add('border-brand-500','text-brand-600')">${t}</button>
+      `).join('')}
+    </div>
+    <!-- Formula Tab -->
+    <div class="bg-white rounded-xl border border-surface-200 p-6">
+      <h4 class="font-bold text-surface-800 mb-4">Formula Pemakaian Bahan Baku</h4>
+      <table class="w-full text-sm">
+        <thead class="bg-surface-50"><tr>
+          <th class="text-left px-4 py-2 font-semibold text-surface-600">Layanan</th>
+          <th class="text-left px-4 py-2 font-semibold text-surface-600">Bahan Baku</th>
+          <th class="text-right px-4 py-2 font-semibold text-surface-600">Pemakaian/kg</th>
+          <th class="text-center px-4 py-2 font-semibold text-surface-600">Aksi</th>
+        </tr></thead>
+        <tbody class="divide-y divide-surface-100">
+          ${[
+            { service:'Reguler', material:'Deterjen Cair', perKg:'0.020 L' },
+            { service:'Reguler', material:'Pewangi Lavender', perKg:'0.005 L' },
+            { service:'Express', material:'Deterjen Cair', perKg:'0.025 L' },
+            { service:'Express', material:'Pewangi Lavender', perKg:'0.008 L' },
+            { service:'Dry Clean', material:'Pewangi Rose', perKg:'0.010 L' },
+          ].map(f=>`
+            <tr class="hover:bg-surface-50">
+              <td class="px-4 py-2.5 font-medium">${f.service}</td>
+              <td class="px-4 py-2.5 text-surface-600">${f.material}</td>
+              <td class="px-4 py-2.5 text-right font-mono text-surface-800">${f.perKg}</td>
+              <td class="px-4 py-2.5 text-center"><button class="text-surface-400 hover:text-brand-500"><i class="fas fa-edit"></i></button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    <!-- Restok Tab (simplified) -->
+    <div class="bg-white rounded-xl border border-surface-200 p-6">
+      <h4 class="font-bold text-surface-800 mb-4">Form Restok Bahan Baku</h4>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div><label class="text-sm text-surface-600 block mb-1">Bahan Baku</label><select class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm">${S.materials.map(m=>`<option>${m.name}</option>`).join('')}</select></div>
+        <div><label class="text-sm text-surface-600 block mb-1">Jumlah</label><input type="number" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="0"></div>
+        <div><label class="text-sm text-surface-600 block mb-1">Harga Beli</label><input type="number" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="0"></div>
+        <div class="flex items-end"><button onclick="toast('Restok berhasil dicatat!','success')" class="w-full py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-bold transition-colors">Restok</button></div>
+      </div>
+    </div>
+    <!-- Opname Tab (simplified) -->
+    <div class="bg-white rounded-xl border border-surface-200 p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h4 class="font-bold text-surface-800">Stock Opname</h4>
+        <button onclick="toast('Sesi opname baru dimulai','info')" class="px-4 py-2 bg-surface-900 hover:bg-surface-800 text-white rounded-lg text-sm font-semibold transition-colors">Mulai Opname Baru</button>
+      </div>
+      <table class="w-full text-sm">
+        <thead class="bg-surface-50"><tr>
+          <th class="text-left px-4 py-2 font-semibold text-surface-600">Bahan Baku</th>
+          <th class="text-right px-4 py-2 font-semibold text-surface-600">Stok Sistem</th>
+          <th class="text-right px-4 py-2 font-semibold text-surface-600">Stok Fisik</th>
+          <th class="text-right px-4 py-2 font-semibold text-surface-600">Selisih</th>
+        </tr></thead>
+        <tbody class="divide-y divide-surface-100">
+          ${S.materials.map(m=>`
+            <tr class="hover:bg-surface-50">
+              <td class="px-4 py-2.5 font-medium">${m.name}</td>
+              <td class="px-4 py-2.5 text-right text-surface-500">${m.stock} ${m.unit}</td>
+              <td class="px-4 py-2.5 text-right"><input type="number" step="0.1" class="w-24 border border-surface-300 rounded-lg px-2 py-1 text-sm text-right" placeholder="0"></td>
+              <td class="px-4 py-2.5 text-right font-medium text-surface-400">—</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    <!-- Variance Report Tab -->
+    <div class="bg-white rounded-xl border border-surface-200 p-6">
+      <h4 class="font-bold text-surface-800 mb-1">Usage vs Formula Variance</h4>
+      <p class="text-sm text-surface-500 mb-4">Perbandingan pemakaian riil dengan formula seharusnya (hari ini)</p>
+      <table class="w-full text-sm">
+        <thead class="bg-surface-50"><tr>
+          <th class="text-left px-4 py-2 font-semibold text-surface-600">Bahan Baku</th>
+          <th class="text-right px-4 py-2 font-semibold text-surface-600">Formula (seharusnya)</th>
+          <th class="text-right px-4 py-2 font-semibold text-surface-600">Pemakaian Riil</th>
+          <th class="text-right px-4 py-2 font-semibold text-surface-600">Selisih</th>
+          <th class="text-center px-4 py-2 font-semibold text-surface-600">Status</th>
+        </tr></thead>
+        <tbody class="divide-y divide-surface-100">
+          ${[
+            {material:'Deterjen Cair', formulaPerKg:0.020, unit:'L', riil:4.2},
+            {material:'Pewangi Lavender', formulaPerKg:0.005, unit:'L', riil:0.9},
+            {material:'Pewangi Rose', formulaPerKg:0.010, unit:'L', riil:0.6},
+            {material:'Plastik Packing', formulaPerKg:0.5, unit:'pcs', riil:28},
+          ].map(v=>{
+            const todayKg = S.orders.filter(o=>o.receivedAt?.startsWith('2024-05-01')&&!['received','cancelled'].includes(o.status)).reduce((a,o)=>a+(o.weight||0),0);
+            const seharusnya = todayKg * v.formulaPerKg;
+            const selisih = v.riil - seharusnya;
+            const pct = seharusnya > 0 ? Math.abs(selisih)/seharusnya*100 : 0;
+            return `<tr class="hover:bg-surface-50">
+              <td class="px-4 py-2.5 font-medium">${v.material}</td>
+              <td class="px-4 py-2.5 text-right text-surface-600">${seharusnya.toFixed(2)} ${v.unit}</td>
+              <td class="px-4 py-2.5 text-right font-medium text-surface-800">${v.riil.toFixed(1)} ${v.unit}</td>
+              <td class="px-4 py-2.5 text-right ${selisih>0?'text-red-600':'text-green-600'} font-medium">${selisih>0?'+':''}${selisih.toFixed(2)} ${v.unit}</td>
+              <td class="px-4 py-2.5 text-center">${pct<10?'<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Normal</span>':'<span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Over '+pct.toFixed(0)+'%</span>'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// ADMIN: COMPLAINTS
+// ============================================================
+function pageComplaints() {
+  return `
+  <div class="fade-in space-y-6">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold text-surface-800">Daftar Komplain</h3>
+      <button onclick="showNewComplaintModal()" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-semibold transition-colors"><i class="fas fa-plus mr-2"></i>Lapor Baru</button>
+    </div>
+    <div class="space-y-3">
+      ${S.complaints.map(c=>`
+        <div class="bg-white rounded-xl border border-surface-200 p-5 card-hover">
+          <div class="flex items-start justify-between mb-3">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="font-mono font-bold text-sm text-surface-800">${c.orderCode}</span>
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${{reported:'bg-yellow-100 text-yellow-700',investigating:'bg-blue-100 text-blue-700',resolved:'bg-green-100 text-green-700'}[c.status]}">${{reported:'Dilaporkan',investigating:'Investigasi',resolved:'Terselesaikan'}[c.status]}</span>
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${{missing:'bg-red-100 text-red-700',damaged:'bg-orange-100 text-orange-700',late:'bg-yellow-100 text-yellow-700',other:'bg-surface-100 text-surface-600'}[c.category]}">${{missing:'Hilang',damaged:'Rusak',late:'Terlambat',other:'Lainnya'}[c.category]}</span>
+              </div>
+              <p class="text-sm text-surface-600">${c.customer} &middot; ${c.date}</p>
+            </div>
+            ${c.status!=='resolved'?`<button onclick="resolveComplaint(${c.id})" class="px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 text-xs font-semibold rounded-lg transition-colors">Selesaikan</button>`:''}
+          </div>
+          <p class="text-sm text-surface-700">${c.desc}</p>
+          ${c.compensation?`<div class="mt-3 bg-green-50 rounded-lg px-3 py-2 text-xs text-green-700"><i class="fas fa-gift mr-1"></i>Kompensasi: ${{wallet_cashback:'Cashback Saldo',free_wash_voucher:'Voucher Gratis Cuci',discount_voucher:'Voucher Diskon'}[c.compensation.type]} ${fmt(c.compensation.value)}</div>`:''}
+        </div>
+      `).join('')}
+    </div>
+  </div>`;
+}
+
+function showNewComplaintModal() {
+  showModal('Laporkan Komplain Baru', `
+    <div class="space-y-3">
+      <div><label class="text-sm text-surface-600 block mb-1">Cari Order</label><input type="text" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Ketik kode order..."></div>
+      <div><label class="text-sm text-surface-600 block mb-1">Kategori</label><select class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"><option value="missing">Hilang</option><option value="damaged">Rusak</option><option value="late">Terlambat</option><option value="other">Lainnya</option></select></div>
+      <div><label class="text-sm text-surface-600 block mb-1">Kronologi</label><textarea rows="3" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm" placeholder="Jelaskan detail kejadian..."></textarea></div>
+    </div>
+  `, `<button onclick="closeModal()" class="px-4 py-2 bg-surface-100 rounded-lg text-sm font-medium">Batal</button>
+      <button onclick="closeModal();toast('Komplain berhasil dilaporkan','success')" class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-semibold">Kirim</button>`);
+}
+
+function resolveComplaint(id) {
+  showModal('Selesaikan Komplain', `
+    <div class="space-y-3">
+      <div><label class="text-sm text-surface-600 block mb-1">Tipe Kompensasi</label>
+        <select id="comp-type" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm">
+          <option value="wallet_cashback">Cashback Saldo</option><option value="free_wash_voucher">Voucher Gratis Cuci</option><option value="discount_voucher">Voucher Diskon</option>
+        </select>
+      </div>
+      <div><label class="text-sm text-surface-600 block mb-1">Nilai (Rp)</label><input type="number" id="comp-value" value="50000" class="w-full border border-surface-300 rounded-lg px-3 py-2 text-sm"></div>
+    </div>
+  `, `<button onclick="closeModal()" class="px-4 py-2 bg-surface-100 rounded-lg text-sm font-medium">Batal</button>
+      <button onclick="doResolveComplaint(${id})" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-semibold">Berikan Kompensasi</button>`);
+}
+
+function doResolveComplaint(id) {
+  const c = S.complaints.find(x=>x.id===id);
+  if (c) { c.status='resolved'; c.compensation = { type:$('comp-type')?.value||'wallet_cashback', value:parseInt($('comp-value')?.value)||50000 }; }
+  closeModal(); toast('Kompensasi berhasil diberikan!','success'); render();
+}
+
+// ============================================================
+// ADMIN: MEMBERSHIPS
+// ============================================================
+function pageMemberships() {
+  return `
+  <div class="fade-in space-y-6">
+    <h3 class="font-bold text-surface-800">Membership Tier</h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      ${S.membershipTiers.map(t=>`
+        <div class="bg-white rounded-xl border ${t.code==='GOLD'?'border-brand-400':'border-surface-200'} p-6 card-hover ${t.code==='GOLD'?'ring-2 ring-brand-500/20':''}">
+          <div class="flex items-center justify-between mb-4">
+            ${tierBadge(t.code)}
+            <span class="text-sm font-bold text-brand-600">${t.discount}% OFF</span>
+          </div>
+          <p class="text-sm text-surface-500 mb-2">Min. Belanja</p>
+          <p class="text-2xl font-bold text-surface-900">${fmt(t.minSpent)}</p>
+          <p class="text-xs text-surface-400 mt-2">${S.customers.filter(c=>c.tier===t.code).length} pelanggan di tier ini</p>
+        </div>
+      `).join('')}
+    </div>
+    <div class="bg-white rounded-xl border border-surface-200 p-6">
+      <h4 class="font-bold text-surface-800 mb-4">Distribusi Pelanggan per Tier</h4>
+      <canvas id="tier-chart" height="80"></canvas>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// ADMIN: PACKAGES
+// ============================================================
+function pagePackages() {
+  return `
+  <div class="fade-in space-y-6">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold text-surface-800">Paket Prepaid</h3>
+      <button onclick="toast('Fitur tambah paket (demo)','info')" class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-semibold transition-colors"><i class="fas fa-plus mr-2"></i>Buat Paket</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      ${S.packages.map(p=>`
+        <div class="bg-white rounded-xl border border-surface-200 overflow-hidden card-hover">
+          <div class="bg-gradient-to-r from-brand-500 to-brand-600 p-4 text-white">
+            <h4 class="font-bold">${p.name}</h4>
+            <p class="text-sm opacity-90">Berlaku ${p.validityDays} hari</p>
+          </div>
+          <div class="p-4 space-y-3">
+            <div class="text-center">
+              <p class="text-3xl font-bold text-surface-900">${fmt(p.price)}</p>
+              <p class="text-xs text-surface-400">${p.type==='wash_kg'?p.quota.wash_kg+' Kg cuci':p.quota.shoes+'x cuci sepatu'}</p>
+            </div>
+            <div class="flex justify-between text-xs text-surface-500 border-t border-surface-100 pt-2">
+              <span>Terjual: ${p.sold} paket</span>
+              <span>Hemat: ${fmt(p.type==='wash_kg'?(p.quota.wash_kg*8000-p.price):(p.quota.shoes*25000-p.price))}</span>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// ADMIN: ROUTING
+// ============================================================
+function pageRouting() {
+  const routes = [
+    { from:'ISTANA Laundry - Pondok Indah', to:'Workshop Pusat', isDefault:true, activeOrders:12 },
+    { from:'ISTANA Laundry - Bintaro', to:'Workshop Pusat', isDefault:true, activeOrders:8 },
+    { from:'ISTANA Laundry - Serpong', to:'Workshop Pusat', isDefault:false, activeOrders:5 },
+  ];
+  return `
+  <div class="fade-in space-y-6">
+    <div class="flex items-center justify-between">
+      <h3 class="font-bold text-surface-800">Routing Outlet ke Workshop</h3>
+      <button onclick="toast('Fitur tambah routing (demo)','info')" class="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded-lg text-sm font-semibold transition-colors"><i class="fas fa-plus mr-2"></i>Tambah Routing</button>
+    </div>
+    <div class="bg-white rounded-xl border border-surface-200 overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-surface-50"><tr>
+          <th class="text-left px-5 py-3 font-semibold text-surface-600">Outlet Penerimaan</th>
+          <th class="text-left px-5 py-3 font-semibold text-surface-600">Workshop Tujuan</th>
+          <th class="text-center px-5 py-3 font-semibold text-surface-600">Default</th>
+          <th class="text-center px-5 py-3 font-semibold text-surface-600">Order Aktif</th>
+          <th class="text-center px-5 py-3 font-semibold text-surface-600">Aksi</th>
+        </tr></thead>
+        <tbody class="divide-y divide-surface-100">
+          ${routes.map(r=>`
+            <tr class="hover:bg-surface-50">
+              <td class="px-5 py-3 font-medium"><i class="fas fa-store mr-2 text-brand-500"></i>${r.from}</td>
+              <td class="px-5 py-3 text-surface-600"><i class="fas fa-industry mr-2 text-surface-400"></i>${r.to}</td>
+              <td class="px-5 py-3 text-center">${r.isDefault?'<span class="text-green-500"><i class="fas fa-check-circle"></i></span>':'<span class="text-surface-300"><i class="far fa-circle"></i></span>'}</td>
+              <td class="px-5 py-3 text-center"><span class="px-2 py-0.5 bg-brand-100 text-brand-700 rounded-full text-xs font-semibold">${r.activeOrders}</span></td>
+              <td class="px-5 py-3 text-center"><button class="text-surface-400 hover:text-brand-500"><i class="fas fa-edit"></i></button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// ADMIN: OVERVIEW
+// ============================================================
+function pageAdminOverview() {
+  return `
+  <div class="fade-in space-y-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      ${[
+        { label:'Total Pelanggan', value:S.customers.length, icon:'fa-users', color:'blue' },
+        { label:'Order Aktif', value:S.orders.filter(o=>!['completed','cancelled'].includes(o.status)).length, icon:'fa-tshirt', color:'orange' },
+        { label:'Stok Kritis', value:S.materials.filter(m=>m.stock<=m.minStock).length, icon:'fa-exclamation-triangle', color:'red' },
+        { label:'Komplain Terbuka', value:S.complaints.filter(c=>c.status!=='resolved').length, icon:'fa-flag', color:'amber' },
+      ].map(c=>`
+        <div class="bg-white rounded-xl border border-surface-200 p-5 card-hover">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-surface-500">${c.label}</span>
+            <div class="w-9 h-9 rounded-lg bg-${c.color}-100 flex items-center justify-center"><i class="fas ${c.icon} text-${c.color}-500 text-sm"></i></div>
+          </div>
+          <p class="text-2xl font-bold text-surface-900">${c.value}</p>
+        </div>
+      `).join('')}
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl border border-surface-200 p-5">
+        <h4 class="font-bold text-surface-800 mb-3">Sistem Status</h4>
+        <div class="space-y-3">
+          ${[
+            { label:'WhatsApp Provider', value:S.waMode==='fonnte'?'Fonnte (Otomatis)':'wa.me (Manual)', ok:true },
+            { label:'Database Connection', value:'MySQL 8 — Connected', ok:true },
+            { label:'Redis Cache', value:'Connected — 23 keys', ok:true },
+            { label:'WebSocket (Reverb)', value:'Running — 3 connections', ok:true },
+            { label:'File Storage (MinIO)', value:'Connected — 1.2 GB used', ok:true },
+          ].map(s=>`
+            <div class="flex items-center justify-between py-1">
+              <span class="text-sm text-surface-600">${s.label}</span>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-surface-500">${s.value}</span>
+                <span class="w-2 h-2 rounded-full ${s.ok?'bg-green-500':'bg-red-500'}"></span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-surface-200 p-5">
+        <h4 class="font-bold text-surface-800 mb-3">Quick Actions</h4>
+        <div class="grid grid-cols-2 gap-2">
+          ${[
+            { label:'Buat Order Baru', icon:'fa-plus', page:'new-order', role:'cashier' },
+            { label:'Cek Stok Bahan', icon:'fa-boxes', page:'inventory', role:'owner' },
+            { label:'Kirim Promo WA', icon:'fa-paper-plane', page:'crm', role:'owner' },
+            { label:'Lihat Komplain', icon:'fa-flag', page:'complaints', role:'admin' },
+            { label:'Ubah Harga', icon:'fa-tags', page:'pricing', role:'admin' },
+            { label:'Setting WA', icon:'fa-whatsapp', page:'settings', role:'admin' },
+          ].map(a=>`
+            <button onclick="S.role='${a.role}';nav('${a.page}')" class="flex items-center gap-2 px-4 py-3 bg-surface-50 hover:bg-brand-50 rounded-lg text-sm font-medium text-surface-700 hover:text-brand-700 transition-colors border border-surface-200 hover:border-brand-200">
+              <i class="fas ${a.icon} text-surface-400"></i>${a.label}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// CHART INITIALIZATION
+// ============================================================
+function initCharts() {
+  // Revenue Donut (Owner Dashboard)
+  const donutEl = document.getElementById('rev-donut');
+  if (donutEl) {
+    const todayOrders = S.orders.filter(o=>o.receivedAt?.startsWith('2024-05-01'));
+    new Chart(donutEl, {
+      type:'doughnut',
+      data:{
+        labels:['Tunai','QRIS','Saldo'],
+        datasets:[{ data:[
+          todayOrders.filter(o=>o.payMethod==='cash').reduce((a,o)=>a+o.total,0),
+          todayOrders.filter(o=>o.payMethod==='qris').reduce((a,o)=>a+o.total,0),
+          todayOrders.filter(o=>o.payMethod==='wallet').reduce((a,o)=>a+o.total,0),
+        ], backgroundColor:['#10B981','#3B82F6','#8B5CF6'], borderWidth:0 }]
+      },
+      options:{ cutout:'70%', plugins:{ legend:{ display:false } }, responsive:true, maintainAspectRatio:false }
+    });
+  }
+
+  // Revenue Chart (Owner Dashboard)
+  const revEl = document.getElementById('revenue-chart');
+  if (revEl) {
+    new Chart(revEl, {
+      type:'line',
+      data:{
+        labels:['25 Apr','26 Apr','27 Apr','28 Apr','29 Apr','30 Apr','1 Mei'],
+        datasets:[
+          { label:'Omzet', data:[320000,410000,280000,520000,390000,450000,249000], borderColor:'#F97316', backgroundColor:'rgba(249,115,22,0.1)', fill:true, tension:0.4, pointRadius:4, pointBackgroundColor:'#F97316' },
+          { label:'Laba Bersih', data:[180000,230000,140000,310000,220000,270000,netProfitCalc()], borderColor:'#10B981', backgroundColor:'rgba(16,185,129,0.1)', fill:true, tension:0.4, pointRadius:4, pointBackgroundColor:'#10B981' },
+        ]
+      },
+      options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true, ticks:{ callback:v=>fmt(v) } }, x:{ grid:{ display:false } } }, plugins:{ legend:{ position:'top', labels:{ usePointStyle:true, padding:20 } } } }
+    });
+  }
+
+  // PnL Chart (Finance)
+  const pnlEl = document.getElementById('pnl-chart');
+  if (pnlEl) {
+    new Chart(pnlEl, {
+      type:'bar',
+      data:{
+        labels:['25 Apr','26 Apr','27 Apr','28 Apr','29 Apr','30 Apr','1 Mei'],
+        datasets:[
+          { label:'Omzet', data:[320000,410000,280000,520000,390000,450000,249000], backgroundColor:'rgba(249,115,22,0.7)', borderRadius:6 },
+          { label:'HPP', data:[85000,105000,72000,135000,98000,115000,65000], backgroundColor:'rgba(239,68,68,0.5)', borderRadius:6 },
+          { label:'Laba', data:[180000,230000,140000,310000,220000,270000,netProfitCalc()], backgroundColor:'rgba(16,185,129,0.7)', borderRadius:6 },
+        ]
+      },
+      options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true, ticks:{ callback:v=>fmt(v) } }, x:{ grid:{ display:false } } }, plugins:{ legend:{ position:'top', labels:{ usePointStyle:true, padding:20, font:{size:11} } } } }
+    });
+  }
+
+  // Composition Chart (Finance)
+  const compEl = document.getElementById('comp-chart');
+  if (compEl) {
+    new Chart(compEl, {
+      type:'doughnut',
+      data:{
+        labels:['Reguler','Express','Dry Clean'],
+        datasets:[{ data:[65,25,10], backgroundColor:['#F97316','#EA580C','#9A3412'], borderWidth:0, hoverOffset:8 }]
+      },
+      options:{ cutout:'65%', plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, padding:16, font:{size:12} } } }, responsive:true, maintainAspectRatio:false }
+    });
+  }
+
+  // Tier Chart (Memberships)
+  const tierEl = document.getElementById('tier-chart');
+  if (tierEl) {
+    const reg = S.customers.filter(c=>c.tier==='REGULAR').length;
+    const sil = S.customers.filter(c=>c.tier==='SILVER').length;
+    const gol = S.customers.filter(c=>c.tier==='GOLD').length;
+    new Chart(tierEl, {
+      type:'bar',
+      data:{
+        labels:['Regular','Silver','Gold'],
+        datasets:[{ data:[reg,sil,gol], backgroundColor:['#A3A3A3','#737373','#F97316'], borderRadius:8, barThickness:60 }]
+      },
+      options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true, ticks:{ stepSize:1 } }, x:{ grid:{ display:false } } }, plugins:{ legend:{ display:false } } }
+    });
+  }
+}
+
+function netProfitCalc() {
+  const todayOrders = S.orders.filter(o=>o.receivedAt?.startsWith('2024-05-01'));
+  const revenue = todayOrders.reduce((a,o)=>a+o.total,0);
+  const hpp = todayOrders.filter(o=>!['received','cancelled'].includes(o.status)).reduce((a,o)=>a+(o.weight*0.02*25000+o.weight*0.005*35000),0);
+  return Math.max(0, revenue - hpp - 150000);
+}
+
+// ============================================================
+// BIND PAGE (Post-render hooks)
+// ============================================================
+function bindPage() {
+  // Inisialisasi chart setelah DOM tersedia
+  requestAnimationFrame(() => { initCharts(); });
+
+  // Auto-focus scanner input di workshop
+  if (S.role === 'workshop' && S.page === 'scanner') {
+    setTimeout(() => {
+      const si = document.getElementById('scanner-input');
+      if (si) si.focus();
+    }, 200);
+  }
+
+  // Keyboard shortcut: Escape untuk tutup modal
+  document.onkeydown = (e) => {
+    if (e.key === 'Escape') closeModal();
+  };
+}
+
+// ============================================================
+// SIMULASI REAL-TIME (Demo WebSocket Effect)
+// ============================================================
+let rtInterval = null;
+function startRealtimeSim() {
+  if (rtInterval) clearInterval(rtInterval);
+  rtInterval = setInterval(() => {
+    if (!S.loggedIn) { clearInterval(rtInterval); return; }
+    // Simulasi: sesekali update status order secara acak
+    if (Math.random() < 0.15) {
+      const movable = S.orders.filter(o => !['completed','cancelled','ready'].includes(o.status));
+      if (movable.length > 0) {
+        const target = movable[Math.floor(Math.random() * movable.length)];
+        const ns = nextStatus(target.status);
+        if (ns) {
+          target.status = ns;
+          // Cek stok deterjen saat mulai cuci
+          if (ns === 'washing') {
+            const det = S.materials.find(m => m.name === 'Deterjen Cair');
+            if (det && det.stock >= target.weight * 0.02) {
+              det.stock = Math.max(0, det.stock - target.weight * 0.02);
+            }
+          }
+          // Hanya re-render halaman yang relevan
+          if (S.page === 'live' || S.page === 'dashboard') {
+            render();
+          }
+        }
+      }
+    }
+  }, 8000); // Setiap 8 detik, 15% chance
+}
+
+// ============================================================
+// PUBLIC TRACKING PAGE (Standalone - diakses tanpa login)
+// ============================================================
+// Disimulasikan sebagai fungsi yang bisa dipanggil via hash URL
+function renderPublicTracking(code) {
+  const o = S.orders.find(x => x.code === code);
+  if (!o) return `<div class="text-center py-20"><i class="fas fa-search text-4xl text-surface-300 mb-4"></i><p class="text-surface-500">Order tidak ditemukan</p></div>`;
+  const steps = ['received','washing','drying','ironing','quality_check','packing','ready','completed'];
+  const currentIdx = steps.indexOf(o.status);
+  return `
+  <div class="min-h-screen bg-surface-100">
+    <div class="bg-white border-b border-surface-200 px-4 py-4">
+      <div class="max-w-lg mx-auto flex items-center gap-3">
+        <img src="https://z-cdn-media.chatglm.cn/files/4ecb000b-de22-46b7-849a-564194b5b2f3.png?auth_key=1879018142-a3731bcb3c26482fbd66abab61ce6610-0-16fb9a0d7b205d69b8eb6151d9920a37" class="w-8 h-8 rounded-full" onerror="this.outerHTML='<div class=\\'w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white text-xs font-bold\\'>IL</div>'">
+        <div><p class="font-bold text-sm">ISTANA Laundry</p><p class="text-xs text-surface-400">Tracking Pesanan</p></div>
+      </div>
+    </div>
+    <div class="max-w-lg mx-auto p-4 space-y-6">
+      <div class="bg-white rounded-2xl border border-surface-200 p-6 text-center">
+        <p class="text-surface-500 text-sm mb-1">Kode Pesanan</p>
+        <p class="text-3xl font-bold font-mono text-surface-900">${o.code}</p>
+        <span class="inline-block mt-3 px-4 py-1.5 rounded-full text-sm font-bold ${statusColor(o.status)}">${statusLabel(o.status)}</span>
+      </div>
+      <div class="bg-white rounded-2xl border border-surface-200 p-6">
+        <div class="relative">
+          ${steps.map((s, i) => {
+            const done = i <= currentIdx;
+            const isCurrent = s === o.status;
+            return `
+              <div class="flex gap-4 ${i < steps.length-1 ? 'pb-8' : ''}">
+                <div class="flex flex-col items-center">
+                  <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${done?(isCurrent?'bg-brand-500 text-white ring-4 ring-brand-500/20 pulse-dot':'bg-green-500 text-white'):'bg-surface-200 text-surface-400'}">
+                    ${done?'<i class="fas fa-check"></i>':i+1}
+                  </div>
+                  ${i < steps.length-1 ? `<div class="w-0.5 flex-1 mt-1 ${done?'bg-green-500':'bg-surface-200'}"></div>` : ''}
+                </div>
+                <div class="pt-2">
+                  <p class="font-semibold text-sm ${done?'text-surface-800':'text-surface-400'}">${statusLabel(s)}</p>
+                  ${isCurrent && o.status==='ready'?'<p class="text-xs text-green-600 mt-0.5"><i class="fas fa-bell mr-1"></i>Silakan diambil di outlet</p>':''}
+                  ${isCurrent && o.status!=='ready'&&o.status!=='completed'?'<p class="text-xs text-brand-600 mt-0.5"><i class="fas fa-spinner fa-spin mr-1"></i>Sedang diproses...</p>':''}
+                  ${done && !isCurrent?'<p class="text-xs text-surface-400 mt-0.5">Selesai</p>':''}
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl border border-surface-200 p-6">
+        <h4 class="font-semibold text-surface-800 mb-3">Detail Pesanan</h4>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between"><span class="text-surface-500">Pelanggan</span><span class="font-medium">${o.customer}</span></div>
+          <div class="flex justify-between"><span class="text-surface-500">Layanan</span><span class="font-medium">${{regular:'Reguler',express:'Express',dry_clean:'Dry Clean'}[o.service]}</span></div>
+          ${o.weight?`<div class="flex justify-between"><span class="text-surface-500">Berat</span><span class="font-medium">${o.weight} kg</span></div>`:''}
+          <div class="flex justify-between"><span class="text-surface-500">Diterima</span><span class="font-medium">${o.receivedAt}</span></div>
+        </div>
+      </div>
+      <div class="text-center">
+        <a href="https://wa.me/${o.phone}?text=Halo%2C%20saya%20ingin%20menanyakan%20pesanan%20${o.code}" target="_blank" class="inline-flex items-center gap-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold transition-colors shadow-lg shadow-green-500/20">
+          <i class="fab fa-whatsapp text-lg"></i>Hubungi via WhatsApp
+        </a>
+      </div>
+      <p class="text-center text-xs text-surface-400 pb-6">Powered by LaundryOS</p>
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// HASH ROUTER untuk Public Tracking
+// ============================================================
+function checkHashRoute() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#track/')) {
+    const code = hash.replace('#track/', '');
+    S.loggedIn = false;
+    $('app').innerHTML = renderPublicTracking(code);
+    return true;
+  }
+  return false;
+}
+
+window.addEventListener('hashchange', () => { checkHashRoute(); });
+
+// ============================================================
+// INIT
+// ============================================================
+(function init() {
+  if (!checkHashRoute()) {
+    render();
+    startRealtimeSim();
+  }
+  // Online/Offline event untuk auto-sync scan buffer
+  window.addEventListener('online', () => {
+    if (S.offlineQueue.length > 0) {
+      syncOfflineQueue();
+      if (S.page === 'scanner') render();
+    }
+  });
+  window.addEventListener('offline', () => {
+    toast('Koneksi internet terputus. Scan akan disimpan lokal.','warning');
+  });
+  // Cek navigator.onLine di awal
+  if (!navigator.onLine && S.offlineQueue.length > 0) {
+    toast(S.offlineQueue.length + ' scan offline menunggu sinkronisasi','info');
+  }
+})();
+</script>
+</body>
+</html>
