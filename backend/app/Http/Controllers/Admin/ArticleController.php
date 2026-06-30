@@ -31,6 +31,13 @@ class ArticleController extends Controller
         return view('admin.pages.articles.index', compact('articles'));
     }
 
+    public function show(Article $article)
+    {
+        $article->load('category');
+
+        return view('admin.pages.articles.show', compact('article'));
+    }
+
     public function create()
     {
         $categories = ArticleCategory::orderBy('name')->get();

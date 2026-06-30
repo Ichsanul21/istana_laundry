@@ -11,7 +11,7 @@ class GalleryController extends Controller
 {
     public function index()
     {
-        $galleries = Gallery::withCount('images')->orderBy('sort_order')->get();
+        $galleries = Gallery::with('images')->orderBy('sort_order')->get();
 
         return view('admin.pages.galleries.index', compact('galleries'));
     }
