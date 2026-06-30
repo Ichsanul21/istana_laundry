@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\ArticleCategory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ArticleController extends Controller
@@ -128,5 +129,14 @@ class ArticleController extends Controller
 
         return redirect()->route('admin.articles.index')
             ->with('success', 'Artikel berhasil dihapus.');
+    }
+
+    public function uploadImage(Request $request)
+    {
+        $request->validate(['image' => 'required|image|max:2048']);
+
+        $path = $request->file('image')->store('articles', 'public');
+
+        return response()->json(['url' => asset('storage/' . $path)]);
     }
 }

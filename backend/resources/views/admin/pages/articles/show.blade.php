@@ -41,8 +41,8 @@
                     <p class="text-theme-sm text-gray-500 dark:text-gray-400 italic border-l-3 border-brand-500 pl-4 mb-6">{{ $article->excerpt }}</p>
                 @endif
 
-                <div class="prose prose-sm max-w-none text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-                    {{ $article->body }}
+                <div class="prose prose-sm max-w-none text-gray-700 dark:text-gray-300 leading-relaxed">
+                    {!! $article->body !!}
                 </div>
             </div>
         </div>

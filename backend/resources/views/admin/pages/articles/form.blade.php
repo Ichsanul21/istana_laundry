@@ -28,8 +28,9 @@
                         <x-form.input label="Slug" name="slug" :value="old('slug', $article->slug ?? '')" hint="Kosongkan untuk auto-generate dari judul" />
                     </div>
                     <div class="mt-4">
-                        <label for="body" class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">Konten <span class="text-error-500">*</span></label>
-                        <textarea id="body" name="body" rows="15" class="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3 focus:border-brand-300 focus:ring-brand-500/20 transition-colors duration-200 dark:text-white/90" required>{{ old('body', $article->body ?? '') }}</textarea>
+                        <label class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">Konten <span class="text-error-500">*</span></label>
+                        <div id="editor" class="ql-editor min-h-[320px]">{!! old('body', $article->body ?? '') !!}</div>
+                        <textarea name="body" id="body" class="hidden">{{ old('body', $article->body ?? '') }}</textarea>
                     </div>
                     <div class="mt-4">
                         <x-form.textarea label="Excerpt" name="excerpt" :value="old('excerpt', $article->excerpt ?? '')" :rows="3" hint="Ringkasan singkat artikel (maks 500 karakter)" />
@@ -96,9 +97,86 @@
         </div>
     </form>
 
+    @push('styles')
+    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+    <style>
+        .ql-container { font-family: 'Outfit', sans-serif; font-size: 15px; }
+        .ql-editor { min-height: 320px; }
+        .ql-editor.ql-blank::before { color: #9ca3af; font-style: normal; }
+        .ql-toolbar { border-radius: 0.5rem 0.5rem 0 0; }
+        .ql-container { border-radius: 0 0 0.5rem 0.5rem; }
+        .ql-editor h1, .ql-editor h2 { font-weight: 700; letter-spacing: -0.02em; }
+        .ql-editor blockquote { border-left: 3px solid #FF6B00; color: #6b7280; }
+        .ql-editor img { border-radius: 8px; margin: 1rem 0; }
+        .dark .ql-toolbar { background: #1a2231; border-color: #374151; color: #d1d5db; }
+        .dark .ql-container { background: #0c111d; border-color: #374151; color: #d1d5db; }
+        .dark .ql-editor.ql-blank::before { color: #6b7280; }
+        .dark .ql-picker-label { color: #d1d5db; }
+        .dark .ql-stroke { stroke: #d1d5db; }
+        .dark .ql-fill { fill: #d1d5db; }
+    </style>
+    @endpush
+
     @push('scripts')
+    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            const quill = new Quill('#editor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        ['blockquote', 'code-block'],
+                        ['link', 'image'],
+                        ['clean']
+                    ]
+                }
+            });
+
+            const bodyInput = document.getElementById('body');
+            const form = bodyInput.closest('form');
+
+            quill.on('text-change', () => {
+                bodyInput.value = quill.root.innerHTML;
+            });
+
+            form.addEventListener('submit', function (e) {
+                bodyInput.value = quill.root.innerHTML;
+                if (!bodyInput.value || bodyInput.value === '<p><br></p>') {
+                    e.preventDefault();
+                    alert('Harap isi konten artikel.');
+                }
+            });
+
+            const toolbar = quill.getModule('toolbar');
+            toolbar.addHandler('image', function () {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.click();
+                input.onchange = function () {
+                    const file = input.files[0];
+                    if (!file) return;
+                    const fd = new FormData();
+                    fd.append('image', file);
+                    fd.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+                    fetch('{{ route("admin.articles.upload-image") }}', {
+                        method: 'POST',
+                        body: fd,
+                        headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }
+                    })
+                    .then(r => r.json())
+                    .then(res => {
+                        if (res.url) {
+                            const range = quill.getSelection(true);
+                            quill.insertEmbed(range.index, 'image', res.url);
+                        }
+                    });
+                };
+            });
+
             const metaTitle = document.querySelector('input[name="meta_title"]');
             const metaDesc = document.querySelector('textarea[name="meta_description"]');
             const titleCount = document.getElementById('metaTitleCount');
@@ -109,9 +187,9 @@
                 descCount.textContent = metaDesc.value.length;
             }
 
-            metaTitle.addEventListener('input', updateCounts);
-            metaDesc.addEventListener('input', updateCounts);
-            updateCounts();
+            if (metaTitle) metaTitle.addEventListener('input', updateCounts);
+            if (metaDesc) metaDesc.addEventListener('input', updateCounts);
+            if (titleCount) updateCounts();
         });
     </script>
     @endpush

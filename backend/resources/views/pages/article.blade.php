@@ -123,7 +123,7 @@
             @endif
 
             <div class="article-body text-base leading-relaxed">
-                {{ $article->body }}
+                {!! $article->body !!}
             </div>
         </article>
     </main>

@@ -62,6 +62,7 @@ Route::middleware(['auth', 'verified'])
         Route::get('location-checks', [LocationCheckController::class, 'index'])->name('location-checks.index');
 
         Route::resource('articles', ArticleController::class);
+        Route::post('articles/upload-image', [App\Http\Controllers\Admin\ArticleController::class, 'uploadImage'])->name('articles.upload-image');
         Route::resource('article-categories', ArticleCategoryController::class);
 
         Route::resource('galleries', GalleryController::class);
