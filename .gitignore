@@ -1,0 +1,22 @@
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.code-workspace
+.phpactor.json
+
+# opencode
+opencode.log
+
+# Generated / auto-created
+README.md
+
+# Logs
+*.log
