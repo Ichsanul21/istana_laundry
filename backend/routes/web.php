@@ -16,6 +16,8 @@ use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\SitemapController;
 use Illuminate\Support\Facades\Route;
 
+Route::get('/artikel/{slug}', [App\Http\Controllers\ArticleController::class, 'showBySlug']);
+
 Route::get('/logo.png', function () {
     $logo = base_path('../logo.png');
     if (file_exists($logo)) {
