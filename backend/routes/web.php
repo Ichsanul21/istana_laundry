@@ -1,22 +1,29 @@
 <?php
 
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\Admin\DashboardController;
-use App\Http\Controllers\Admin\BranchController;
-use App\Http\Controllers\Admin\LocationCheckController;
-use App\Http\Controllers\Admin\ArticleController;
 use App\Http\Controllers\Admin\ArticleCategoryController;
-use App\Http\Controllers\Admin\GalleryController;
-use App\Http\Controllers\Admin\ServiceController;
-use App\Http\Controllers\Admin\PromotionController;
-use App\Http\Controllers\Admin\TestimonialController;
+use App\Http\Controllers\Admin\ArticleController;
+use App\Http\Controllers\Admin\BranchController;
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FaqController;
+use App\Http\Controllers\Admin\GalleryController;
+use App\Http\Controllers\Admin\LocationCheckController;
+use App\Http\Controllers\Admin\PromotionController;
 use App\Http\Controllers\Admin\SeoSettingController;
+use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\SettingController;
+use App\Http\Controllers\Admin\TestimonialController;
+use App\Http\Controllers\CarpetInspectionController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SitemapController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/artikel/{slug}', [App\Http\Controllers\ArticleController::class, 'showBySlug']);
+
+Route::get('/cek-karpet', [CarpetInspectionController::class, 'index'])->name('karpet.index');
+Route::post('/cek-karpet', [CarpetInspectionController::class, 'store'])
+    ->middleware('throttle:5,1')
+    ->name('karpet.store');
+Route::get('/cek-karpet/{inspection:token}', [CarpetInspectionController::class, 'show'])->name('karpet.show');
 
 Route::get('/logo.png', function () {
     $logo = base_path('../logo.png');
@@ -36,6 +43,7 @@ Route::get('/', function () {
         return response(file_get_contents($landingPage), 200)
             ->header('Content-Type', 'text/html');
     }
+
     return view('welcome');
 });
 
@@ -61,8 +69,11 @@ Route::middleware(['auth', 'verified'])
         Route::get('location-checks/{locationCheck}', [LocationCheckController::class, 'show'])->name('location-checks.show');
         Route::get('location-checks', [LocationCheckController::class, 'index'])->name('location-checks.index');
 
+        Route::get('carpet-inspections', [App\Http\Controllers\Admin\CarpetInspectionController::class, 'index'])->name('carpet-inspections.index');
+        Route::get('carpet-inspections/{carpetInspection}', [App\Http\Controllers\Admin\CarpetInspectionController::class, 'show'])->name('carpet-inspections.show');
+
         Route::resource('articles', ArticleController::class);
-        Route::post('articles/upload-image', [App\Http\Controllers\Admin\ArticleController::class, 'uploadImage'])->name('articles.upload-image');
+        Route::post('articles/upload-image', [ArticleController::class, 'uploadImage'])->name('articles.upload-image');
         Route::resource('article-categories', ArticleCategoryController::class);
 
         Route::resource('galleries', GalleryController::class);

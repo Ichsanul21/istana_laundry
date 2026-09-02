@@ -35,4 +35,22 @@ return [
         ],
     ],
 
+    'gemini' => [
+        'api_key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+        'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+    ],
+
+    'cloudflare' => [
+        'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+        'api_token' => env('CLOUDFLARE_API_TOKEN'),
+        'model' => env('CLOUDFLARE_AI_MODEL', '@cf/meta/llama-3.2-11b-vision-instruct'),
+    ],
+
+    'ai' => [
+        'provider' => env('AI_PROVIDER', 'gemini'),
+        'max_image_dimension' => env('AI_MAX_IMAGE_DIMENSION', 1600),
+        'image_quality' => env('AI_IMAGE_QUALITY', 82),
+    ],
+
 ];
