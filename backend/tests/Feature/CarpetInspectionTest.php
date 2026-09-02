@@ -21,17 +21,6 @@ class CarpetInspectionTest extends TestCase
             ->assertViewIs('pages.karpet');
     }
 
-    public function test_index_only_lists_recent_completed_results(): void
-    {
-        CarpetInspection::factory()->count(3)->create();
-        CarpetInspection::factory()->failed()->create();
-        CarpetInspection::factory()->processing()->create();
-
-        $response = $this->get(route('karpet.index'));
-
-        $response->assertViewHas('recent', fn ($recent) => $recent->count() === 3);
-    }
-
     public function test_store_validates_required_fields(): void
     {
         $response = $this->post(route('karpet.store'), []);

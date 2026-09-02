@@ -171,31 +171,6 @@
             </div>
         </div>
 
-        {{-- Recent --}}
-        @if($recent->isNotEmpty())
-        <div class="mt-20 border-t border-lo-gray pt-16">
-            <div class="flex items-center gap-3 mb-6 reveal"><span class="w-8 h-[2px] bg-lo"></span><span class="text-[11px] font-mono tracking-[.2em] uppercase text-black/40">Hasil Terbaru</span></div>
-            <h2 class="text-2xl sm:text-3xl font-black tracking-tighter leading-[.95] reveal d1">Pengecekan Terbaru</h2>
-            <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-8">
-                @foreach($recent as $r)
-                <div class="reveal border border-lo-gray p-5 bg-white">
-                    <span class="text-[10px] font-mono tracking-wider uppercase text-black/30">{{ $r->created_at->format('d M Y') }}</span>
-                    <div class="mt-3 flex items-end justify-between">
-                        <span class="text-xs font-bold text-black/70">{{ $r->name }}</span>
-                        <span class="text-xl font-black tracking-tighter {{ in_array($r->overall_condition, ['Baik','Buruk'], true) ? ($r->overall_condition === 'Baik' ? 'text-black' : 'text-red-500') : 'text-lo' }}">{{ $r->overall_condition }}</span>
-                    </div>
-                    <div class="mt-2 flex items-center gap-2">
-                        <div class="flex-1 h-1.5 bg-lo-gray rounded-full overflow-hidden">
-                            <div class="h-full bg-lo rounded-full" style="width:{{ $r->cleanliness_score }}%"></div>
-                        </div>
-                        <span class="text-[10px] font-mono text-black/40">{{ $r->cleanliness_score }}%</span>
-                    </div>
-                </div>
-                @endforeach
-            </div>
-        </div>
-        @endif
-
         {{-- CTA --}}
         <div class="mt-20 bg-black text-white p-10 text-center reveal">
             <h2 class="text-2xl sm:text-3xl font-black tracking-tighter">Saran Perawatan Langsung?</h2>

@@ -15,13 +15,7 @@ class CarpetInspectionController extends Controller
 
     public function index(): View
     {
-        $recent = CarpetInspection::query()
-            ->where('status', CarpetInspectionService::STATUS_COMPLETED)
-            ->latest('created_at')
-            ->limit(4)
-            ->get(['name', 'overall_condition', 'cleanliness_score', 'created_at']);
-
-        return view('pages.karpet', compact('recent'));
+        return view('pages.karpet');
     }
 
     public function store(Request $request): RedirectResponse
