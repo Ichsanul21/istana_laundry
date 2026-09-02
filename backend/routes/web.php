@@ -21,7 +21,7 @@ Route::get('/artikel/{slug}', [App\Http\Controllers\ArticleController::class, 's
 
 Route::get('/cek-karpet', [CarpetInspectionController::class, 'index'])->name('karpet.index');
 Route::post('/cek-karpet', [CarpetInspectionController::class, 'store'])
-    ->middleware('throttle:5,1')
+    ->middleware('throttle:20,2')
     ->name('karpet.store');
 Route::get('/cek-karpet/{inspection:token}', [CarpetInspectionController::class, 'show'])->name('karpet.show');
 
